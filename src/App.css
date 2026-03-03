@@ -1,0 +1,120 @@
+/* ===== SMARTCLUSTER AUTH (LOGIN + SIGNUP) ===== */
+
+body {
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(135deg, #1e88e5, #1565c0);
+  font-family: "Segoe UI", sans-serif;
+  height: 100vh;
+}
+
+/* ===== CENTER CONTAINER ===== */
+
+.container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
+
+/* ===== AUTH CARD (IMPORTANT CHANGE) ===== */
+
+.auth-card {
+  background: #ffffff;
+  padding: 35px 40px;
+  border-radius: 12px;
+  width: 350px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+
+/* ===== TITLE ===== */
+
+.auth-card h2 {
+  margin-bottom: 20px;
+  color: #1565c0;
+}
+
+/* ===== INPUTS ===== */
+
+.input {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+  transition: 0.3s;
+}
+
+.input:focus {
+  border-color: #1565c0;
+  outline: none;
+}
+
+/* ===== PASSWORD WRAPPER ===== */
+
+.password-wrapper {
+  position: relative;
+}
+
+/* ===== EYE ICON PERFECT ALIGN ===== */
+
+.eye-icon {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  cursor: pointer;
+  font-size: 18px;
+  color: #555;
+}
+
+.eye-icon:hover {
+  color: #000;
+}
+
+/* ===== BUTTON ===== */
+
+.btn {
+  width: 100%;
+  padding: 12px;
+  margin-top: 15px;
+  border: none;
+  border-radius: 8px;
+  background: #1565c0;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.btn:hover {
+  background: #0d47a1;
+}
+
+/* ===== SIGNUP LINK ===== */
+
+.signup {
+  margin-top: 15px;
+  font-size: 14px;
+}
+
+.signup a {
+  color: #1565c0;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.signup a:hover {
+  text-decoration: underline;
+}
+
+/* ===== RESPONSIVE ===== */
+
+@media (max-width: 400px) {
+  .auth-card {
+    width: 90%;
+    padding: 25px;
+  }
+}

@@ -1,0 +1,250 @@
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    font-family: "Segoe UI", sans-serif;
+}
+
+body{
+    background:#eef2f7;
+}
+
+/* NAVBAR */
+
+.navbar{
+    background:#3c3c3c;
+    color:#fff;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:12px 30px;
+}
+
+.logo{
+    font-size:22px;
+    font-weight:bold;
+}
+
+.nav-links span{
+    color:white;
+    margin:0 15px;
+    font-weight:500;
+    cursor:pointer;
+}
+
+.nav-links span:hover{
+    color:#1e88e5;
+}
+
+.right-section{
+    display:flex;
+    align-items:center;
+}
+
+.nav-buttons button{
+    padding:7px 15px;
+    margin-left:10px;
+    border:none;
+    border-radius:20px;
+    cursor:pointer;
+    font-weight:500;
+}
+
+.login-btn{
+    background:#ffffff;
+    color:#333;
+}
+
+.signup-btn{
+    background:#1e88e5;
+    color:#fff;
+}
+
+.menu-container{
+    position:relative;
+    margin-left:10px;
+}
+
+.dots{
+    font-size:22px;
+    cursor:pointer;
+    padding:5px 10px;
+    border-radius:6px;
+}
+
+.dots:hover{
+    background:#555;
+}
+
+.dropdown{
+    position:absolute;
+    right:0;
+    top:40px;
+    background:#f1f1f1;
+    width:180px;
+    border-radius:6px;
+    box-shadow:0px 4px 10px rgba(0,0,0,0.2);
+}
+
+.dropdown a{
+    display:block;
+    padding:12px;
+    text-decoration:none;
+    color:#333;
+    border-bottom:1px solid #ddd;
+}
+
+.dropdown a:hover{
+    background:#ddd;
+}
+
+/* HERO */
+
+.hero{
+    padding:60px 80px;
+    background:linear-gradient(135deg,#e3f2fd,#ffffff);
+}
+
+.hero h1{
+    font-size:32px;
+    margin-bottom:15px;
+}
+
+.hero p{
+    font-size:18px;
+    color:#555;
+    margin-bottom:25px;
+}
+
+.hero-buttons button{
+    padding:10px 20px;
+    margin-right:10px;
+    border:none;
+    border-radius:25px;
+    cursor:pointer;
+    font-size:15px;
+}
+
+.start-btn{
+    background:#1565c0;
+    color:#fff;
+}
+
+.learn-btn{
+    background:#fff;
+    border:1px solid #1565c0;
+    color:#1565c0;
+}
+
+.features{
+    display:flex;
+    justify-content:space-around;
+    padding:50px 80px;
+}
+
+.card{
+    background:#fff;
+    width:28%;
+    padding:25px;
+    border-radius:12px;
+    box-shadow:0 4px 10px rgba(0,0,0,0.1);
+}
+
+.card h3{
+    color:#1565c0;
+    margin-bottom:10px;
+}
+
+.card p{
+    color:#555;
+    font-size:14px;
+}
+
+/* ===== ABOUT SECTION (FIXED BEAUTIFUL UI) ===== */
+
+.about-section {
+    max-width: 950px;
+    margin: 70px auto;
+    padding: 45px 50px;
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.08);
+    animation: fadeIn 0.6s ease-in-out;
+}
+
+.about-section h2 {
+    text-align: center;
+    font-size: 30px;
+    color: #1565c0;
+    margin-bottom: 25px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+
+.about-section p {
+    font-size: 16px;
+    line-height: 1.9;
+    color: #444;
+    margin-bottom: 18px;
+    text-align: justify;
+}
+
+.about-section:hover {
+    transform: translateY(-5px);
+    transition: 0.3s;
+}
+
+/* smooth animation */
+
+@keyframes fadeIn {
+    from{
+        opacity:0;
+        transform: translateY(20px);
+    }
+    to{
+        opacity:1;
+        transform: translateY(0);
+    }
+}
+.footer{
+    text-align:center;
+    padding:20px;
+    background:#3c3c3c;
+    color:#fff;
+    margin-top:40px;
+}
+.profile-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: 10px;
+}
+
+.profile-pic {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid white;
+}
+
+.username {
+  color: white;
+  font-weight: 500;
+}
+.user-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.username {
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.user-role {
+  color: #ddd;
+  font-size: 12px;
+}
