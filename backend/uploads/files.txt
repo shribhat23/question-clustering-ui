@@ -1,0 +1,38 @@
+What is a Loop in Python?
+Explain for loop in Python.
+Explain while loop in Python.
+
+What is Object Oriented Programming?
+Explain OOP concepts.
+Define OOP.
+
+
+What is Data Mining?
+Explain Data Mining.
+Define Data Mining.
+What are the techniques used in Data Mining?
+
+What is Natural Language Processing?
+Explain Natural Language Processing.
+Define NLP.
+What are the applications of NLP?
+
+What is Computer Vision?
+Explain Computer Vision.
+Define Computer Vision.
+What are the applications of Computer Vision?
+
+What is Big Data?
+Explain Big Data.
+Define Big Data.
+What are the characteristics of Big Data?
+
+Find the LCM of 12 and 18
+Find the HCF of 24 and 36
+
+Explain Probability
+Define Random Variable
+
+find the LCM of 60 and 25
+define LCM
+define algebraic sum

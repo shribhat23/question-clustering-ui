@@ -21,21 +21,17 @@ function Signup() {
       return;
     }
 
-    // 🔹 Get existing users array or empty array
     const existingUsers = JSON.parse(localStorage.getItem("users")) || [];
 
-    // 🔹 Check if email already exists
-    const userExists = existingUsers.find(
-      (user) => user.email === email
-    );
+    const userExists = existingUsers.find((user) => user.email === email);
 
     if (userExists) {
       alert("Email already registered ❌");
       return;
     }
-    const finalRole =
-  email === "admin@gmail.com" ? "Admin" : role;
-    // 🔹 Create new user object
+
+    const finalRole = email === "admin@gmail.com" ? "Admin" : role;
+
     const newUser = {
       id: Date.now(),
       firstName,
@@ -43,101 +39,99 @@ function Signup() {
       name: firstName + " " + lastName,
       email,
       password,
-      role,
+      role: finalRole,
       profilePic: "https://i.pravatar.cc/40"
     };
 
-    // 🔹 Save updated users array
     const updatedUsers = [...existingUsers, newUser];
     localStorage.setItem("users", JSON.stringify(updatedUsers));
 
     alert("Signup Successful ✅");
-
     navigate("/");
   };
 
   return (
-    <div className="container">
-      <div className="auth-card">
+    <div className="auth-page">
+      <div className="container">
+        <div className="auth-card">
+          <h2>Signup</h2>
 
-        <h2>Signup</h2>
-
-        <form onSubmit={handleSignup}>
-
-          <select
-            className="input"
-            value={role}
-            onChange={(e) => setRole(e.target.value)}
-          >
-            <option value="Student">Student</option>
-            <option value="Teacher">Teacher</option>
-          </select>
-
-          <input
-            type="text"
-            className="input"
-            placeholder="First Name"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
-            required
-          />
-
-          <input
-            type="text"
-            className="input"
-            placeholder="Last Name"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
-            required
-          />
-
-          <input
-            type="email"
-            className="input"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-
-          <div className="password-wrapper">
-            <input
-              type={showPassword ? "text" : "password"}
+          <form onSubmit={handleSignup}>
+            <select
               className="input"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+            >
+              <option value="Student">Student</option>
+              <option value="Teacher">Teacher</option>
+            </select>
+
+            <input
+              type="text"
+              className="input"
+              placeholder="First Name"
+              value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               required
             />
 
-            <span
-              className="eye-icon"
-              onClick={() => setShowPassword(!showPassword)}
-            >
-              <i className={showPassword ? "fas fa-eye-slash" : "fas fa-eye"}></i>
-            </span>
-          </div>
+            <input
+              type="text"
+              className="input"
+              placeholder="Last Name"
+              value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
+              required
+            />
 
-          <input
-            type={showPassword ? "text" : "password"}
-            className="input"
-            placeholder="Confirm Password"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            required
-          />
+            <input
+              type="email"
+              className="input"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
 
-          <button className="btn">
-            Signup
-          </button>
+            <div className="password-wrapper">
+              <input
+                type={showPassword ? "text" : "password"}
+                className="input"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
 
-        </form>
+              <span
+                className="eye-icon"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                <i
+                  className={showPassword ? "fas fa-eye-slash" : "fas fa-eye"}
+                ></i>
+              </span>
+            </div>
 
-        <p className="signup">
-          Already have account?
-          <Link to="/"> Login</Link>
-        </p>
+            <input
+              type={showPassword ? "text" : "password"}
+              className="input"
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
 
+            <button className="btn" type="submit">
+              Signup
+            </button>
+          </form>
+
+          <p className="signup">
+            Already have account?
+            <Link to="/"> Login</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

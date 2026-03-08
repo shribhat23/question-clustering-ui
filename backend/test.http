@@ -1,0 +1,8 @@
+### Upload Cluster Request
+POST http://127.0.0.1:5000/cluster
+Content-Type: application/json
+
+{
+ "filename": "questions.txt",
+ "clusters": 3
+}

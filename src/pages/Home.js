@@ -8,7 +8,6 @@ function Home() {
   const [showMenu, setShowMenu] = useState(false);
   const [user, setUser] = useState(null);
 
-  // ✅ Get logged-in user from currentUser
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("currentUser"));
     setUser(storedUser);
@@ -20,22 +19,19 @@ function Home() {
   };
 
   return (
-    <div>
-      {/* NAVBAR */}
+    <div className="home-page">
       <div className="navbar">
         <div className="logo">SmartCluster</div>
 
         <div className="nav-links">
           <span onClick={() => setShowAbout(false)}>Home</span>
           <span onClick={() => setShowAbout(true)}>About</span>
-          <Link to="/dashboard" style={{ color: "white" }}>
+          <Link to="/dashboard" style={{ color: "white", textDecoration: "none", marginLeft: "15px" }}>
             Dashboard
           </Link>
         </div>
 
         <div className="right-section">
-
-          {/* PROFILE SECTION */}
           {user ? (
             <div className="profile-section">
               <img
@@ -61,10 +57,7 @@ function Home() {
           )}
 
           <div className="menu-container">
-            <div
-              className="dots"
-              onClick={() => setShowMenu(!showMenu)}
-            >
+            <div className="dots" onClick={() => setShowMenu(!showMenu)}>
               ⋮
             </div>
 
@@ -87,7 +80,6 @@ function Home() {
         </div>
       </div>
 
-      {/* HOME CONTENT */}
       {!showAbout && (
         <div>
           <div className="hero">
@@ -115,17 +107,17 @@ function Home() {
           </div>
 
           <div className="features">
-            <div className="card">
+            <div className="feature-card">
               <h3>📂 Dataset Management</h3>
               <p>Manage 2000+ academic questions stored in database.</p>
             </div>
 
-            <div className="card">
+            <div className="feature-card">
               <h3>🧠 Intelligent Clustering</h3>
               <p>Group similar questions using NLP embeddings.</p>
             </div>
 
-            <div className="card">
+            <div className="feature-card">
               <h3>📊 Data Analytics</h3>
               <p>Visualize clustering results and performance.</p>
             </div>
@@ -133,21 +125,18 @@ function Home() {
         </div>
       )}
 
-      {/* ABOUT SECTION */}
       {showAbout && (
         <div className="about-section">
           <h2>About SmartCluster</h2>
           <p>
-            SmartCluster is an intelligent Question Clustering System developed as an MCA 
-            project that automatically groups 12th standard academic questions based on 
+            SmartCluster is an intelligent Question Clustering System developed as an MCA
+            project that automatically groups 12th standard academic questions based on
             semantic similarity using Natural Language Processing (NLP) and Machine Learning techniques.
           </p>
         </div>
       )}
 
-      <div className="footer">
-        © 2026 SmartCluster | MCA Project
-      </div>
+      <div className="footer">© 2026 SmartCluster | MCA Project</div>
     </div>
   );
 }

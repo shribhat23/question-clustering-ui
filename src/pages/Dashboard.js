@@ -3,150 +3,200 @@ import { Link, useNavigate } from "react-router-dom";
 import "../Dashboard.css";
 
 function Dashboard() {
-
   const navigate = useNavigate();
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const handleLogout = () => {
     navigate("/");
   };
 
   const handleFileChange = (event) => {
-    const file = event.target.files[0];
-    setSelectedFile(file);
+    const files = Array.from(event.target.files);
+    setSelectedFiles(files);
   };
 
-  const handleUpload = () => {
-    if (!selectedFile) {
-      alert("Please select a file first!");
+  const handleUpload = async () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select at least one file first!");
       return;
     }
 
-    localStorage.setItem("uploadedFile", selectedFile.name);
-    navigate("/clustering");
+    const formData = new FormData();
+    selectedFiles.forEach((file) => {
+      formData.append("files", file);
+    });
+
+    try {
+      setLoading(true);
+
+      const uploadRes = await fetch("http://127.0.0.1:5000/upload-multiple", {
+        method: "POST",
+        body: formData,
+      });
+
+      const uploadData = await uploadRes.json();
+      console.log("Upload response:", uploadData);
+
+      const resultsRes = await fetch("http://127.0.0.1:5000/results");
+      const resultsData = await resultsRes.json();
+      console.log("Results response:", resultsData);
+
+      navigate("/clustering", {
+        state: {
+          message: uploadData.message || "",
+          stats: {
+            questionsFound: uploadData.questions_found || 0,
+            storedInDb: uploadData.stored_in_db || 0,
+            duplicatesFound: uploadData.duplicates_found || 0,
+            clustersCreated: uploadData.clusters_created || 0,
+            filesUploaded: uploadData.files_uploaded || 0,
+          },
+          clusters: Array.isArray(resultsData) ? resultsData : [],
+        },
+      });
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Error while uploading files");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="dashboard-body">
+    <div className="dashboard-page">
+      <div className="dashboard-body">
+        <div className="sidebar">
+          <h2>SmartCluster</h2>
 
-      {/* SIDEBAR */}
-      <div className="sidebar">
-        <h2>SmartCluster</h2>
+          <Link to="/home">🏠 Home</Link>
+          <Link to="/dashboard" className="active-link">📂 Dashboard</Link>
+          <Link to="/clustering">🧠 Clustering</Link>
+          <Link to="#">📊 Analytics</Link>
+          <Link to="#">🗂 SQL Views</Link>
+          <Link to="#">⚙ Model</Link>
 
-        <Link to="/home">🏠 Home</Link>
-        <Link to="#">📂 Dashboard</Link>
-        <Link to="/clustering">🧠 Clustering</Link>
-        <Link to="#">📊 Analytics</Link>
-        <Link to="#">🗂 SQL Views</Link>
-        <Link to="#">⚙ Model</Link>
-
-        <span onClick={handleLogout} style={{ cursor: "pointer" }}>
-          🚪 Logout
-        </span>
-      </div>
-
-      {/* MAIN */}
-      <div className="main">
-
-        <div className="topbar">
-
-  <div className="chat-input-container">
-
-    {/* PLUS ICON */}
-    <label htmlFor="fileUpload" className="plus-icon">
-      +
-    </label>
-
-    <input
-      type="file"
-      id="fileUpload"
-      accept=".csv,.pdf,.doc,.docx,.txt"
-      onChange={handleFileChange}
-      hidden
-    />
-
-    {/* TEXT INPUT */}
-    <input
-      type="text"
-      className="chat-input"
-      placeholder="Got a question in your mind ask now!!"
-    />
-
-    {/* SEND BUTTON */}
-    <button className="send-btn" onClick={handleUpload}>
-      ➤
-    </button>
-
-  </div>
-
-  <div className="user-info">
-    Yashaswini E. | MCA Project
-  </div>
-
-</div>
-
-        {/* Selected File */}
-        {selectedFile && (
-          <div className="file-preview">
-            📎 Selected: {selectedFile.name}
-          </div>
-        )}
-
-        {/* STATS */}
-        <div className="stats">
-          <div className="card">
-            <h3>2000+</h3>
-            <p>Total Questions</p>
-          </div>
-
-          <div className="card">
-            <h3>8</h3>
-            <p>Total Subjects</p>
-          </div>
-
-          <div className="card">
-            <h3>5</h3>
-            <p>Total Clusters</p>
-          </div>
-
-          <div className="card">
-            <h3>400</h3>
-            <p>Avg Questions per Cluster</p>
-          </div>
-
-          <div className="card">
-            <h3>0.82</h3>
-            <p>Silhouette Score</p>
-          </div>
+          <span onClick={handleLogout} style={{ cursor: "pointer" }}>
+            🚪 Logout
+          </span>
         </div>
 
-        {/* METRICS */}
-        <div className="section">
-          <h2>Key Metrics</h2>
-
-          <div className="metrics">
-            <div className="metric-box">
-              <h4>Questions Processed</h4>
-              <p>2000 records cleaned and vectorized using NLP.</p>
+        <div className="main">
+          <div className="topbar">
+            <div>
+              <h1 className="page-title">Dashboard</h1>
+              <p className="page-subtitle">
+                Upload question files, process them, and view clustering results.
+              </p>
             </div>
 
-            <div className="metric-box">
-              <h4>Vocabulary Size</h4>
-              <p>Approx 15,000 unique tokens extracted.</p>
+            <div className="user-info">Yashaswini E. | MCA Project</div>
+          </div>
+
+          <div className="upload-panel">
+            <h3>Upload Question Files</h3>
+            <p>Select one or more files and click upload to see clustering results.</p>
+
+            <div className="chat-input-container">
+              <label htmlFor="fileUpload" className="plus-icon">
+                +
+              </label>
+
+              <input
+                type="file"
+                id="fileUpload"
+                accept=".csv,.pdf,.doc,.docx,.txt"
+                multiple
+                onChange={handleFileChange}
+                hidden
+              />
+
+              <input
+                type="text"
+                className="chat-input"
+                placeholder="Choose files for clustering"
+                readOnly
+                value={
+                  selectedFiles.length > 0
+                    ? `${selectedFiles.length} file(s) selected`
+                    : ""
+                }
+              />
+
+              <button
+                className="send-btn"
+                onClick={handleUpload}
+                disabled={loading}
+              >
+                {loading ? "..." : "Upload"}
+              </button>
             </div>
 
-            <div className="metric-box">
-              <h4>Clustering Algorithm</h4>
-              <p>K-Means with Sentence Transformers embeddings.</p>
+            {selectedFiles.length > 0 && (
+              <div className="file-preview">
+                <div className="file-preview-title">Selected Files</div>
+                <ul className="file-preview-list">
+                  {selectedFiles.map((file, index) => (
+                    <li key={index}>{file.name}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div className="stats">
+            <div className="dashboard-card">
+              <h3>2000+</h3>
+              <p>Total Questions</p>
             </div>
 
-            <div className="metric-box">
-              <h4>Database</h4>
-              <p>MySQL with indexed question_id and cluster_id.</p>
+            <div className="dashboard-card">
+              <h3>8</h3>
+              <p>Total Subjects</p>
+            </div>
+
+            <div className="dashboard-card">
+              <h3>5</h3>
+              <p>Total Clusters</p>
+            </div>
+
+            <div className="dashboard-card">
+              <h3>400</h3>
+              <p>Avg Questions per Cluster</p>
+            </div>
+
+            <div className="dashboard-card">
+              <h3>0.82</h3>
+              <p>Silhouette Score</p>
+            </div>
+          </div>
+
+          <div className="section">
+            <h2>Key Metrics</h2>
+
+            <div className="metrics">
+              <div className="metric-box">
+                <h4>Questions Processed</h4>
+                <p>2000 records cleaned and vectorized using NLP techniques.</p>
+              </div>
+
+              <div className="metric-box">
+                <h4>Vocabulary Size</h4>
+                <p>Approx 15,000 unique tokens extracted from uploaded questions.</p>
+              </div>
+
+              <div className="metric-box">
+                <h4>Clustering Algorithm</h4>
+                <p>K-Means with Sentence Transformer embeddings for grouping similar questions.</p>
+              </div>
+
+              <div className="metric-box">
+                <h4>Database</h4>
+                <p>MySQL stores questions, duplicates, and cluster information efficiently.</p>
+              </div>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );

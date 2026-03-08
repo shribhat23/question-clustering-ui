@@ -3,7 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import "../App.css";
 
 function Login() {
-
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -13,10 +12,8 @@ function Login() {
   const handleLogin = (e) => {
     e.preventDefault();
 
-    // 🔹 Get users array
     const users = JSON.parse(localStorage.getItem("users")) || [];
 
-    // 🔹 Find matching user
     const validUser = users.find(
       (user) => user.email === email && user.password === password
     );
@@ -26,66 +23,67 @@ function Login() {
       return;
     }
 
-    // 🔹 Save currently logged-in user
     localStorage.setItem("currentUser", JSON.stringify(validUser));
 
     alert("Login Successful ✅");
 
-    navigate("/home");
+    if (validUser.email === "admin@gmail.com") {
+      navigate("/admin/upload");
+    } else {
+      navigate("/home");
+    }
   };
 
   return (
-    <div className="container">
-      <div className="auth-card">
-        
-        <h2>Login</h2>
+    <div className="auth-page">
+      <div className="container">
+        <div className="auth-card">
+          <h2>Login</h2>
 
-        <form onSubmit={handleLogin}>
-
-          <input
-            type="email"
-            className="input"
-            placeholder="Email"
-            value={email}
-            onChange={(e)=>setEmail(e.target.value)}
-            required
-          />
-
-          <div className="password-wrapper">
-
+          <form onSubmit={handleLogin}>
             <input
-              type={showPassword ? "text" : "password"}
+              type="email"
               className="input"
-              placeholder="Password"
-              value={password}
-              onChange={(e)=>setPassword(e.target.value)}
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
             />
 
-            <span
-              className="eye-icon"
-              onClick={()=>setShowPassword(!showPassword)}
-            >
-              <i className={
-                showPassword
-                ? "fa-solid fa-eye-slash"
-                : "fa-solid fa-eye"
-              }></i>
-            </span>
+            <div className="password-wrapper">
+              <input
+                type={showPassword ? "text" : "password"}
+                className="input"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
 
-          </div>
+              <span
+                className="eye-icon"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                <i
+                  className={
+                    showPassword
+                      ? "fa-solid fa-eye-slash"
+                      : "fa-solid fa-eye"
+                  }
+                ></i>
+              </span>
+            </div>
 
-          <button className="btn">
-            Login
-          </button>
+            <button className="btn" type="submit">
+              Login
+            </button>
+          </form>
 
-        </form>
-
-        <p className="signup">
-          Don't have account?
-          <Link to="/signup"> Signup</Link>
-        </p>
-
+          <p className="signup">
+            Don't have account?
+            <Link to="/signup"> Signup</Link>
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,0 +1,10 @@
+
+find the LCM of 60 and 25
+define LCM
+define algebraic sum
+Define OOP.
+
+Find the HCF of 24 and 36
+
+Explain Probability
+find the LCM of 2 and 5
