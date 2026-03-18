@@ -1,0 +1,74 @@
+/* PAGE */
+
+.about-page {
+  background: #eef4fb;
+  min-height: 100vh;
+  font-family: "Segoe UI", sans-serif;
+}
+
+.about-body {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* SIDEBAR */
+
+.sidebar {
+  width: 240px;
+  background: linear-gradient(180deg, #0f172a, #1e3a8a);
+  color: white;
+  padding-top: 24px;
+}
+
+.sidebar h2 {
+  text-align: center;
+  margin-bottom: 30px;
+  font-size: 26px;
+}
+
+.sidebar a,
+.sidebar span {
+  display: block;
+  padding: 14px 22px;
+  color: #e2e8f0;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sidebar a:hover,
+.sidebar span:hover,
+.sidebar .active-link {
+  background: rgba(255,255,255,0.12);
+  border-left: 4px solid #60a5fa;
+  padding-left: 26px;
+}
+
+/* MAIN */
+
+.about-main {
+  flex: 1;
+  padding: 40px;
+}
+
+/* ABOUT CARD */
+
+.about-card {
+  background: #f4f4f4;
+  padding: 40px;
+  border-radius: 30px;
+  border: 1px solid #dbeafe;
+  max-width: 1400px;
+}
+
+.about-card h2 {
+  font-size: 38px;
+  color: #0b1f4d;
+  margin-bottom: 30px;
+}
+
+.about-card p {
+  font-size: 20px;
+  color: #425b7b;
+  line-height: 1.9;
+  margin-bottom: 24px;
+}

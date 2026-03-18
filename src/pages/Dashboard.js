@@ -1,13 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import "../Dashboard.css";
+import "../styles/Dashboard.css";
 
 function Dashboard() {
   const navigate = useNavigate();
+
   const [selectedFiles, setSelectedFiles] = useState([]);
+  const [questionText, setQuestionText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    const storedUser = JSON.parse(localStorage.getItem("currentUser"));
+    setUser(storedUser);
+  }, []);
 
   const handleLogout = () => {
+    localStorage.removeItem("currentUser");
     navigate("/");
   };
 
@@ -16,9 +25,42 @@ function Dashboard() {
     setSelectedFiles(files);
   };
 
-  const handleUpload = async () => {
+  const clearAll = () => {
+    setSelectedFiles([]);
+    setQuestionText("");
+
+    const fileInput = document.getElementById("fileUpload");
+    if (fileInput) {
+      fileInput.value = "";
+    }
+  };
+
+  const handleQuestionSubmit = async () => {
+    if (!questionText.trim()) {
+      alert("Please type a question first!");
+      return;
+    }
+
+    const textRes = await fetch("http://127.0.0.1:5000/ask-question", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ question: questionText.trim() }),
+    });
+
+    const textData = await textRes.json();
+
+    if (!textRes.ok) {
+      throw new Error(textData.error || "Error while sending question");
+    }
+
+    return textData;
+  };
+
+  const handleFileUpload = async () => {
     if (selectedFiles.length === 0) {
-      alert("Please select at least one file first!");
+      alert("Please select one or more files first!");
       return;
     }
 
@@ -27,37 +69,78 @@ function Dashboard() {
       formData.append("files", file);
     });
 
+    const uploadRes = await fetch("http://127.0.0.1:5000/upload-multiple", {
+      method: "POST",
+      body: formData,
+    });
+
+    const uploadData = await uploadRes.json();
+
+    if (!uploadRes.ok) {
+      throw new Error(uploadData.error || "Error while uploading");
+    }
+
+    const previousFiles =
+      JSON.parse(localStorage.getItem("uploadedFilesHistory")) || [];
+    const newFileNames = selectedFiles.map((file) => file.name);
+
+    localStorage.setItem(
+      "uploadedFilesHistory",
+      JSON.stringify([...previousFiles, ...newFileNames])
+    );
+
+    return uploadData;
+  };
+
+  const handleSubmit = async () => {
+    if (selectedFiles.length === 0 && questionText.trim() === "") {
+      alert("Please select a file or type a question first!");
+      return;
+    }
+
     try {
       setLoading(true);
 
-      const uploadRes = await fetch("http://127.0.0.1:5000/upload-multiple", {
-        method: "POST",
-        body: formData,
-      });
+      let responseData = {};
 
-      const uploadData = await uploadRes.json();
-      console.log("Upload response:", uploadData);
+      if (questionText.trim()) {
+        responseData = await handleQuestionSubmit();
+      } else if (selectedFiles.length > 0) {
+        responseData = await handleFileUpload();
+      }
 
-      const resultsRes = await fetch("http://127.0.0.1:5000/results");
-      const resultsData = await resultsRes.json();
-      console.log("Results response:", resultsData);
+      let clusters = [];
+
+      if (Array.isArray(responseData)) {
+        clusters = responseData;
+      } else if (responseData.clusters && Array.isArray(responseData.clusters)) {
+        clusters = responseData.clusters;
+      } else if (responseData.results && Array.isArray(responseData.results)) {
+        clusters = responseData.results;
+      } else {
+        const resultsRes = await fetch("http://127.0.0.1:5000/results");
+        const resultsData = await resultsRes.json();
+        clusters = Array.isArray(resultsData) ? resultsData : [];
+      }
 
       navigate("/clustering", {
         state: {
-          message: uploadData.message || "",
+          message: responseData.message || "Processed successfully",
           stats: {
-            questionsFound: uploadData.questions_found || 0,
-            storedInDb: uploadData.stored_in_db || 0,
-            duplicatesFound: uploadData.duplicates_found || 0,
-            clustersCreated: uploadData.clusters_created || 0,
-            filesUploaded: uploadData.files_uploaded || 0,
+            questionsFound: responseData.questions_found || 0,
+            storedInDb: responseData.stored_in_db || 0,
+            duplicatesFound: responseData.duplicates_found || 0,
+            clustersCreated:
+              responseData.clusters_created ||
+              (Array.isArray(clusters) ? clusters.length : 0),
+            filesUploaded: responseData.files_uploaded || 0,
           },
-          clusters: Array.isArray(resultsData) ? resultsData : [],
+          clusters,
         },
       });
     } catch (error) {
       console.error("Error:", error);
-      alert("Error while uploading files");
+      alert(error.message || "Error while uploading");
     } finally {
       setLoading(false);
     }
@@ -70,11 +153,13 @@ function Dashboard() {
           <h2>SmartCluster</h2>
 
           <Link to="/home">🏠 Home</Link>
-          <Link to="/dashboard" className="active-link">📂 Dashboard</Link>
+          <Link to="/dashboard" className="active-link">
+            📂 Dashboard
+          </Link>
           <Link to="/clustering">🧠 Clustering</Link>
           <Link to="#">📊 Analytics</Link>
           <Link to="#">🗂 SQL Views</Link>
-          <Link to="#">⚙ Model</Link>
+          <Link to="/about">ℹ️ About</Link>
 
           <span onClick={handleLogout} style={{ cursor: "pointer" }}>
             🚪 Logout
@@ -86,20 +171,26 @@ function Dashboard() {
             <div>
               <h1 className="page-title">Dashboard</h1>
               <p className="page-subtitle">
-                Upload question files, process them, and view clustering results.
+                Upload question files or type a question to view clustering
+                results.
               </p>
             </div>
 
-            <div className="user-info">Yashaswini E. | MCA Project</div>
+            <div className="user-info">
+              {user ? `${user.name} | ${user.role}` : "User"}
+            </div>
           </div>
 
           <div className="upload-panel">
             <h3>Upload Question Files</h3>
-            <p>Select one or more files and click upload to see clustering results.</p>
+            <p>
+              Select one or more files, or type a question below, then click
+              Send.
+            </p>
 
             <div className="chat-input-container">
               <label htmlFor="fileUpload" className="plus-icon">
-                +
+                <i className="fa-solid fa-plus"></i>
               </label>
 
               <input
@@ -114,21 +205,18 @@ function Dashboard() {
               <input
                 type="text"
                 className="chat-input"
-                placeholder="Choose files for clustering"
-                readOnly
-                value={
-                  selectedFiles.length > 0
-                    ? `${selectedFiles.length} file(s) selected`
-                    : ""
-                }
+                placeholder="Choose files or type your question here..."
+                value={questionText}
+                onChange={(e) => setQuestionText(e.target.value)}
               />
 
               <button
                 className="send-btn"
-                onClick={handleUpload}
+                onClick={handleSubmit}
                 disabled={loading}
+                type="button"
               >
-                {loading ? "..." : "Upload"}
+                {loading ? "..." : "Send"}
               </button>
             </div>
 
@@ -141,6 +229,12 @@ function Dashboard() {
                   ))}
                 </ul>
               </div>
+            )}
+
+            {(selectedFiles.length > 0 || questionText.trim()) && (
+              <button className="clear-btn" onClick={clearAll} type="button">
+                Clear
+              </button>
             )}
           </div>
 
@@ -187,12 +281,18 @@ function Dashboard() {
 
               <div className="metric-box">
                 <h4>Clustering Algorithm</h4>
-                <p>K-Means with Sentence Transformer embeddings for grouping similar questions.</p>
+                <p>
+                  K-Means with Sentence Transformer embeddings for grouping
+                  similar questions.
+                </p>
               </div>
 
               <div className="metric-box">
                 <h4>Database</h4>
-                <p>MySQL stores questions, duplicates, and cluster information efficiently.</p>
+                <p>
+                  MySQL stores questions, duplicates, and cluster information
+                  efficiently.
+                </p>
               </div>
             </div>
           </div>

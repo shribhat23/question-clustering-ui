@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import "../Clustering.css";
+import "../styles/Clustering.css";
 
 function Clustering() {
   const location = useLocation();
   const navigate = useNavigate();
 
   const [files, setFiles] = useState([]);
+  const [questionInput, setQuestionInput] = useState("");
   const [clusters, setClusters] = useState([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState(null);
   const [stats, setStats] = useState({
     questionsFound: 0,
     storedInDb: 0,
@@ -17,6 +19,11 @@ function Clustering() {
     clustersCreated: 0,
     filesUploaded: 0,
   });
+
+  useEffect(() => {
+    const storedUser = JSON.parse(localStorage.getItem("currentUser"));
+    setUser(storedUser);
+  }, []);
 
   useEffect(() => {
     if (location.state) {
@@ -39,9 +46,33 @@ function Clustering() {
     navigate("/");
   };
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
+  const resetStats = () => {
+    setStats({
+      questionsFound: 0,
+      storedInDb: 0,
+      duplicatesFound: 0,
+      clustersCreated: 0,
+      filesUploaded: 0,
+    });
+  };
 
+  const fetchResults = async () => {
+    try {
+      const resultsRes = await fetch("http://127.0.0.1:5000/results");
+      const resultsData = await resultsRes.json();
+
+      if (Array.isArray(resultsData)) {
+        setClusters(resultsData);
+      } else {
+        setClusters([]);
+      }
+    } catch (error) {
+      console.error("Error fetching results:", error);
+      setClusters([]);
+    }
+  };
+
+  const handleUpload = async () => {
     if (files.length === 0) {
       alert("Please select one or more files");
       return;
@@ -56,6 +87,7 @@ function Clustering() {
       setLoading(true);
       setMessage("");
       setClusters([]);
+      resetStats();
 
       const uploadRes = await fetch("http://127.0.0.1:5000/upload-multiple", {
         method: "POST",
@@ -65,31 +97,102 @@ function Clustering() {
       const uploadData = await uploadRes.json();
       console.log("Upload response:", uploadData);
 
-      setMessage(uploadData.message || "");
+      setMessage(uploadData.message || "Files uploaded successfully");
 
       setStats({
         questionsFound: uploadData.questions_found || 0,
         storedInDb: uploadData.stored_in_db || 0,
         duplicatesFound: uploadData.duplicates_found || 0,
         clustersCreated: uploadData.clusters_created || 0,
-        filesUploaded: uploadData.files_uploaded || 0,
+        filesUploaded: uploadData.files_uploaded || files.length || 0,
       });
 
-      const resultsRes = await fetch("http://127.0.0.1:5000/results");
-      const resultsData = await resultsRes.json();
-      console.log("Results response:", resultsData);
-
-      if (Array.isArray(resultsData)) {
-        setClusters(resultsData);
-      } else {
-        setClusters([]);
-      }
+      await fetchResults();
     } catch (error) {
       console.error("Error:", error);
       setMessage("Error while uploading or fetching results");
       setClusters([]);
+      resetStats();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQuestionSubmit = async () => {
+    if (!questionInput.trim()) {
+      alert("Please type a question");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setMessage("");
+      setClusters([]);
+      resetStats();
+
+      const res = await fetch("http://127.0.0.1:5000/ask-question", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question: questionInput.trim() }),
+      });
+
+      const data = await res.json();
+      console.log("Question response:", data);
+
+      if (res.ok) {
+        if (Array.isArray(data)) {
+          setClusters(data);
+          setMessage("Question processed successfully");
+        } else if (data.clusters && Array.isArray(data.clusters)) {
+          setClusters(data.clusters);
+          setMessage(data.message || "Question processed successfully");
+        } else {
+          setClusters([]);
+          setMessage(data.message || "No matching clusters found");
+        }
+      } else {
+        setMessage(data.error || "Error while processing question");
+        setClusters([]);
+      }
+
+      setQuestionInput("");
+    } catch (error) {
+      console.error("Error:", error);
+      setMessage("Error while sending question");
+      setClusters([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMainSubmit = async (e) => {
+    e.preventDefault();
+
+    if (questionInput.trim()) {
+      await handleQuestionSubmit();
+      return;
+    }
+
+    if (files.length > 0) {
+      await handleUpload();
+      return;
+    }
+
+    alert("Please type a question or select files");
+  };
+
+  const clearSelection = () => {
+    setFiles([]);
+    setQuestionInput("");
+    setMessage("");
+    setClusters([]);
+    resetStats();
+
+    const fileInput = document.getElementById("clusterFileUpload");
+    if (fileInput) {
+      fileInput.value = "";
     }
   };
 
@@ -106,7 +209,7 @@ function Clustering() {
           </Link>
           <Link to="#">📊 Analytics</Link>
           <Link to="#">🗂 SQL Views</Link>
-          <Link to="#">⚙ Model</Link>
+          <Link to="/about">ℹ️ About</Link>
 
           <span onClick={handleLogout} style={{ cursor: "pointer" }}>
             🚪 Logout
@@ -118,24 +221,27 @@ function Clustering() {
             <div>
               <h1 className="page-title">Clustering Results</h1>
               <p className="page-subtitle">
-                Upload files and view grouped question clusters with statistics.
+                Type a question or upload files to view grouped question clusters
+                with statistics.
               </p>
             </div>
 
-            <div className="user-info">Yashaswini E. | MCA Project</div>
+            <div className="user-info">
+              {user ? `${user.name} | ${user.role}` : "User"}
+            </div>
           </div>
 
           <div className="upload-panel">
-            <h3>Upload Files for Clustering</h3>
+            <h3>Question Input / File Upload</h3>
             <p>
-              Select one or more files and click upload to process and view the
-              clustering results.
+              You can type a question directly or select one or more files for
+              clustering.
             </p>
 
-            <form onSubmit={handleUpload}>
+            <form onSubmit={handleMainSubmit}>
               <div className="chat-input-container">
-                <label htmlFor="clusterFileUpload" className="plus-icon">
-                  +
+                <label htmlFor="clusterFileUpload" className="plus-icon" title="Choose files">
+                  <i className="fa-solid fa-plus"></i>
                 </label>
 
                 <input
@@ -150,16 +256,22 @@ function Clustering() {
                 <input
                   type="text"
                   className="chat-input"
-                  placeholder="Choose files for clustering"
-                  readOnly
-                  value={files.length > 0 ? `${files.length} file(s) selected` : ""}
+                  placeholder="Type your question here or choose files..."
+                  value={questionInput}
+                  onChange={(e) => setQuestionInput(e.target.value)}
                 />
 
                 <button type="submit" className="send-btn" disabled={loading}>
-                  {loading ? "..." : "Upload"}
+                  {loading ? "..." : "Send"}
                 </button>
               </div>
             </form>
+
+            {(files.length > 0 || questionInput.trim()) && (
+              <button className="clear-btn" onClick={clearSelection}>
+                Clear
+              </button>
+            )}
 
             {files.length > 0 && (
               <div className="file-preview">
@@ -185,7 +297,7 @@ function Clustering() {
             )}
           </div>
 
-          {(stats.questionsFound > 0 || stats.clustersCreated > 0) && (
+          {(stats.questionsFound > 0 || stats.clustersCreated > 0 || stats.filesUploaded > 0) && (
             <div className="stats">
               <div className="cluster-stat-card">
                 <h3>{stats.filesUploaded}</h3>
@@ -218,7 +330,7 @@ function Clustering() {
             <h2>Cluster Results</h2>
 
             {loading ? (
-              <div className="empty-state">Processing files, please wait...</div>
+              <div className="empty-state">Processing, please wait...</div>
             ) : clusters.length > 0 ? (
               <div className="cluster-grid">
                 {clusters.map((item, index) => (
@@ -248,7 +360,8 @@ function Clustering() {
               </div>
             ) : (
               <div className="empty-state">
-                No clusters to display. Upload files to see results.
+                No clusters to display. Type a question or upload files to see
+                results.
               </div>
             )}
           </div>

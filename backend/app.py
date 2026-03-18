@@ -5,6 +5,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy import create_engine, text
+from werkzeug.utils import secure_filename
 
 import spacy
 from sentence_transformers import SentenceTransformer
@@ -68,7 +69,9 @@ TOPIC_EXAMPLES = {
         "Solve x + 2 = 5",
         "Calculate the area of a circle",
         "Find the HCF of 24 and 36",
-        "Explain probability"
+        "Explain probability",
+        "sum of 10 and 20",
+        "difference of 100 and 20"
     ],
     "Physics": [
         "Define force",
@@ -181,6 +184,7 @@ TOPIC_EXAMPLES = {
 KEYWORD_BONUS = {
     "Mathematics": [
         "lcm", "hcf", "algebra", "algebraic", "sum",
+        "difference", "add", "subtract", "multiply", "division",
         "probability", "equation", "mean", "median", "mode",
         "area", "perimeter", "volume", "fraction", "ratio"
     ],
@@ -218,24 +222,31 @@ for topic, examples in TOPIC_EXAMPLES.items():
 # Normalize Question
 # ---------------------------
 def normalize_question(question):
-    question = question.strip().lower()
+    question = str(question).strip().lower()
     question = re.sub(r"[^\w\s]", "", question)
     question = re.sub(r"\s+", " ", question)
     return question
+
+# ---------------------------
+# Safe filename
+# ---------------------------
+def safe_filename(filename):
+    filename = filename.replace("\\", "/")
+    filename = filename.split("/")[-1]
+    return secure_filename(filename)
 
 # ---------------------------
 # Ensure normalized_question column exists
 # ---------------------------
 def ensure_normalized_column():
     try:
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             columns = pd.read_sql("SHOW COLUMNS FROM questions", conn)
 
             if "normalized_question" not in columns["Field"].tolist():
                 conn.execute(text(
                     "ALTER TABLE questions ADD COLUMN normalized_question VARCHAR(500)"
                 ))
-                conn.commit()
 
             df = pd.read_sql(
                 "SELECT id, question_text, normalized_question FROM questions",
@@ -244,8 +255,9 @@ def ensure_normalized_column():
 
             for _, row in df.iterrows():
                 normalized_q = normalize_question(row["question_text"])
+                current_normalized = row["normalized_question"]
 
-                if row["normalized_question"] != normalized_q:
+                if pd.isna(current_normalized) or current_normalized != normalized_q:
                     conn.execute(text("""
                         UPDATE questions
                         SET normalized_question = :normalized_question
@@ -254,9 +266,6 @@ def ensure_normalized_column():
                         "normalized_question": normalized_q,
                         "id": int(row["id"])
                     })
-
-            conn.commit()
-
     except Exception as e:
         print("Warning:", e)
 
@@ -265,7 +274,7 @@ def ensure_normalized_column():
 # ---------------------------
 def delete_duplicate_questions():
     try:
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             conn.execute(text("""
                 DELETE q1
                 FROM questions q1
@@ -273,13 +282,11 @@ def delete_duplicate_questions():
                   ON q1.normalized_question = q2.normalized_question
                  AND q1.id > q2.id
             """))
-            conn.commit()
     except Exception as e:
         print("Duplicate cleanup error:", e)
 
 # ---------------------------
 # Delete very-near semantic duplicates from DB
-# Keeps different numeric questions separate
 # ---------------------------
 def delete_semantic_duplicate_questions(threshold=0.95):
     try:
@@ -313,24 +320,19 @@ def delete_semantic_duplicate_questions(threshold=0.95):
         deleted_count = 0
 
         if ids_to_delete:
-            with engine.connect() as conn:
+            with engine.begin() as conn:
                 for question_id in ids_to_delete:
                     result = conn.execute(
                         text("DELETE FROM questions WHERE id = :id"),
                         {"id": int(question_id)}
                     )
                     deleted_count += result.rowcount
-                conn.commit()
 
         return deleted_count
 
     except Exception as e:
         print("Semantic duplicate cleanup error:", e)
         return 0
-
-ensure_normalized_column()
-delete_duplicate_questions()
-delete_semantic_duplicate_questions()
 
 # ---------------------------
 # Extract Questions
@@ -386,7 +388,6 @@ def remove_internal_duplicates(questions):
 
 # ---------------------------
 # Duplicate Detection with Database
-# Only exact + very-near semantic duplicates
 # ---------------------------
 def is_duplicate_in_db(question, threshold=0.95):
     normalized_q = normalize_question(question)
@@ -416,7 +417,7 @@ def is_duplicate_in_db(question, threshold=0.95):
 # ---------------------------
 # Find Similar Questions in DB
 # ---------------------------
-def find_similar_questions_in_db(question, threshold=0.60):
+def find_similar_questions_in_db(question, threshold=0.60, limit=20):
     try:
         df = pd.read_sql("SELECT question_text FROM questions", engine)
     except Exception:
@@ -431,16 +432,19 @@ def find_similar_questions_in_db(question, threshold=0.60):
 
     scores = cosine_similarity([query_embedding], db_embeddings)[0]
 
-    similar_questions = []
+    matched = []
     seen = set()
 
-    for db_question, score in zip(db_questions, scores):
+    for db_question, score in sorted(zip(db_questions, scores), key=lambda x: x[1], reverse=True):
         normalized_db_q = normalize_question(db_question)
         if score >= threshold and normalized_db_q not in seen:
-            similar_questions.append(db_question)
+            matched.append(db_question)
             seen.add(normalized_db_q)
 
-    return similar_questions
+        if len(matched) >= limit:
+            break
+
+    return matched
 
 # ---------------------------
 # Detect Topic for a Question
@@ -487,257 +491,252 @@ def group_questions_by_topic(questions):
     return grouped
 
 # ---------------------------
-# Single File Upload API
+# Save clustered results into DB table
+# ---------------------------
+def save_clustered_results(grouped_topics):
+    rows = []
+    cluster_number = 1
+
+    for topic in TOPIC_ORDER:
+        if topic in grouped_topics:
+            for q in grouped_topics[topic]:
+                rows.append({
+                    "cluster": f"Cluster {cluster_number}",
+                    "topic": topic,
+                    "question": q
+                })
+            cluster_number += 1
+
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM clustered_questions"))
+
+    df = pd.DataFrame(rows)
+
+    if not df.empty:
+        df.to_sql(
+            "clustered_questions",
+            engine,
+            if_exists="append",
+            index=False
+        )
+
+# ---------------------------
+# Convert grouped topics to result format
+# ---------------------------
+def build_cluster_result(grouped_topics):
+    result = []
+    cluster_number = 1
+
+    for topic in TOPIC_ORDER:
+        if topic in grouped_topics:
+            result.append({
+                "cluster": f"Cluster {cluster_number}",
+                "topic": topic,
+                "questions": grouped_topics[topic]
+            })
+            cluster_number += 1
+
+    return result
+
+# ---------------------------
+# Rebuild clustered_questions from questions table
+# ---------------------------
+def rebuild_clustered_results_from_questions():
+    try:
+        df = pd.read_sql("SELECT question_text FROM questions ORDER BY id ASC", engine)
+
+        if df.empty:
+            with engine.begin() as conn:
+                conn.execute(text("DELETE FROM clustered_questions"))
+            return
+
+        questions = df["question_text"].dropna().tolist()
+        grouped_topics = group_questions_by_topic(questions)
+        save_clustered_results(grouped_topics)
+
+    except Exception as e:
+        print("Rebuild cluster error:", e)
+
+# ---------------------------
+# Shared upload processing
+# ---------------------------
+def process_uploaded_questions(question_list):
+    if len(question_list) == 0:
+        return {
+            "message": "Files uploaded but no questions found",
+            "questions_found": 0,
+            "stored_in_db": 0,
+            "duplicates_found": 0,
+            "clusters_created": 0,
+            "results": []
+        }
+
+    question_list = remove_internal_duplicates(question_list)
+
+    saved_questions = []
+    duplicate_questions = []
+
+    with engine.begin() as conn:
+        for q in question_list:
+            if is_duplicate_in_db(q, threshold=0.95):
+                duplicate_questions.append(q)
+                continue
+
+            normalized_q = normalize_question(q)
+
+            try:
+                conn.execute(text("""
+                    INSERT INTO questions (question_text, normalized_question, category)
+                    VALUES (:question_text, :normalized_question, :category)
+                """), {
+                    "question_text": q,
+                    "normalized_question": normalized_q,
+                    "category": "Auto"
+                })
+                saved_questions.append(q)
+            except Exception:
+                duplicate_questions.append(q)
+
+    delete_duplicate_questions()
+    delete_semantic_duplicate_questions()
+
+    all_matched_questions = []
+    seen_all = set()
+
+    for q in question_list:
+        normalized_q = normalize_question(q)
+        if normalized_q not in seen_all:
+            all_matched_questions.append(q)
+            seen_all.add(normalized_q)
+
+        similar_db_questions = find_similar_questions_in_db(q, threshold=0.60)
+
+        for matched_q in similar_db_questions:
+            normalized_matched = normalize_question(matched_q)
+            if normalized_matched not in seen_all:
+                all_matched_questions.append(matched_q)
+                seen_all.add(normalized_matched)
+
+    grouped_topics = group_questions_by_topic(all_matched_questions)
+    save_clustered_results(grouped_topics)
+    result = build_cluster_result(grouped_topics)
+
+    return {
+        "questions_found": len(question_list),
+        "stored_in_db": len(saved_questions),
+        "duplicates_found": len(duplicate_questions),
+        "clusters_created": len(result),
+        "results": result
+    }
+
+# ---------------------------
+# Initial cleanup
+# ---------------------------
+ensure_normalized_column()
+delete_duplicate_questions()
+delete_semantic_duplicate_questions()
+rebuild_clustered_results_from_questions()
+
+# ---------------------------
+# Upload API
 # ---------------------------
 @app.route("/upload", methods=["POST"])
-def upload_file():
-    if "file" not in request.files:
+def upload_files():
+    uploaded_files = request.files.getlist("files")
+
+    if not uploaded_files or len(uploaded_files) == 0:
+        single_file = request.files.get("file")
+        if single_file:
+            uploaded_files = [single_file]
+
+    if not uploaded_files or len(uploaded_files) == 0:
         return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files["file"]
+    valid_files = [f for f in uploaded_files if f and f.filename.strip() != ""]
 
-    if file.filename == "":
+    if len(valid_files) == 0:
         return jsonify({"error": "No selected file"}), 400
 
-    filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-    file.save(filepath)
+    all_questions = []
+    saved_file_names = []
 
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            text_data = f.read()
-    except Exception as e:
-        return jsonify({"error": f"File read error: {str(e)}"}), 500
+    for file in valid_files:
+        try:
+            filename = safe_filename(file.filename)
 
-    questions = extract_questions(text_data)
-
-    if len(questions) == 0:
-        return jsonify({
-            "message": "File uploaded but no questions found",
-            "results": []
-        }), 200
-
-    questions = remove_internal_duplicates(questions)
-
-    saved_questions = []
-    duplicate_questions = []
-
-    with engine.connect() as conn:
-        for q in questions:
-            if is_duplicate_in_db(q, threshold=0.95):
-                duplicate_questions.append(q)
+            if not filename:
                 continue
 
-            normalized_q = normalize_question(q)
+            filepath = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+            file.save(filepath)
+            saved_file_names.append(filename)
 
-            try:
-                conn.execute(text("""
-                    INSERT INTO questions (question_text, normalized_question, category)
-                    VALUES (:question_text, :normalized_question, :category)
-                """), {
-                    "question_text": q,
-                    "normalized_question": normalized_q,
-                    "category": "Auto"
-                })
-                saved_questions.append(q)
-            except Exception:
-                duplicate_questions.append(q)
-
-        conn.commit()
-
-    delete_duplicate_questions()
-    delete_semantic_duplicate_questions()
-
-    all_matched_questions = []
-    seen_all = set()
-
-    for q in questions:
-        normalized_q = normalize_question(q)
-        if normalized_q not in seen_all:
-            all_matched_questions.append(q)
-            seen_all.add(normalized_q)
-
-        similar_db_questions = find_similar_questions_in_db(q, threshold=0.60)
-
-        for matched_q in similar_db_questions:
-            normalized_matched = normalize_question(matched_q)
-            if normalized_matched not in seen_all:
-                all_matched_questions.append(matched_q)
-                seen_all.add(normalized_matched)
-
-    grouped_topics = group_questions_by_topic(all_matched_questions)
-
-    rows = []
-    cluster_number = 1
-
-    for topic in TOPIC_ORDER:
-        if topic in grouped_topics:
-            for q in grouped_topics[topic]:
-                rows.append({
-                    "cluster": f"Cluster {cluster_number}",
-                    "topic": topic,
-                    "question": q
-                })
-            cluster_number += 1
-
-    df = pd.DataFrame(rows)
-
-    if not df.empty:
-        df.to_sql(
-            "clustered_questions",
-            engine,
-            if_exists="replace",
-            index=False
-        )
-
-    result = []
-    cluster_number = 1
-
-    for topic in TOPIC_ORDER:
-        if topic in grouped_topics:
-            result.append({
-                "cluster": f"Cluster {cluster_number}",
-                "topic": topic,
-                "questions": grouped_topics[topic]
-            })
-            cluster_number += 1
-
-    return jsonify({
-        "message": "File uploaded, similar questions found, and results generated successfully",
-        "questions_found": len(questions),
-        "stored_in_db": len(saved_questions),
-        "duplicates_found": len(duplicate_questions),
-        "clusters_created": len(result),
-        "results": result
-    })
-
-# ---------------------------
-# Multiple Files Upload API
-# ---------------------------
-@app.route("/upload-multiple", methods=["POST"])
-def upload_multiple_files():
-    if "files" not in request.files:
-        return jsonify({"error": "No files uploaded"}), 400
-
-    files = request.files.getlist("files")
-
-    if not files or files[0].filename == "":
-        return jsonify({"error": "No selected files"}), 400
-
-    all_questions = []
-
-    for file in files:
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-        file.save(filepath)
-
-        try:
             with open(filepath, "r", encoding="utf-8") as f:
                 text_data = f.read()
+
+            questions = extract_questions(text_data)
+            all_questions.extend(questions)
+
         except Exception as e:
-            return jsonify({"error": f"File read error in {file.filename}: {str(e)}"}), 500
+            return jsonify({
+                "error": f"File read error in {file.filename}: {str(e)}"
+            }), 500
 
-        questions = extract_questions(text_data)
-        all_questions.extend(questions)
+    if len(saved_file_names) == 0:
+        return jsonify({"error": "No valid files uploaded"}), 400
 
-    if len(all_questions) == 0:
-        return jsonify({
-            "message": "Files uploaded but no questions found",
-            "results": []
-        }), 200
+    processed = process_uploaded_questions(all_questions)
 
-    all_questions = remove_internal_duplicates(all_questions)
+    return jsonify({
+        "message": f"{len(saved_file_names)} file(s) uploaded and processed successfully",
+        "files_uploaded": len(saved_file_names),
+        "uploaded_files": saved_file_names,
+        "questions_found": processed["questions_found"],
+        "stored_in_db": processed["stored_in_db"],
+        "duplicates_found": processed["duplicates_found"],
+        "clusters_created": processed["clusters_created"],
+        "results": processed["results"]
+    }), 200
 
-    saved_questions = []
-    duplicate_questions = []
+# ---------------------------
+# Ask Question API
+# ---------------------------
+@app.route("/ask-question", methods=["POST"])
+def ask_question():
+    try:
+        data = request.get_json()
 
-    with engine.connect() as conn:
-        for q in all_questions:
-            if is_duplicate_in_db(q, threshold=0.95):
-                duplicate_questions.append(q)
-                continue
+        if not data:
+            return jsonify({"error": "No JSON data received"}), 400
 
-            normalized_q = normalize_question(q)
+        question = data.get("question", "").strip()
 
-            try:
-                conn.execute(text("""
-                    INSERT INTO questions (question_text, normalized_question, category)
-                    VALUES (:question_text, :normalized_question, :category)
-                """), {
-                    "question_text": q,
-                    "normalized_question": normalized_q,
-                    "category": "Auto"
-                })
-                saved_questions.append(q)
-            except Exception:
-                duplicate_questions.append(q)
+        if not question:
+            return jsonify({"error": "Question is required"}), 400
 
-        conn.commit()
+        similar_db_questions = find_similar_questions_in_db(question, threshold=0.55, limit=15)
 
-    delete_duplicate_questions()
-    delete_semantic_duplicate_questions()
-
-    all_matched_questions = []
-    seen_all = set()
-
-    for q in all_questions:
-        normalized_q = normalize_question(q)
-        if normalized_q not in seen_all:
-            all_matched_questions.append(q)
-            seen_all.add(normalized_q)
-
-        similar_db_questions = find_similar_questions_in_db(q, threshold=0.60)
+        all_matched_questions = [question]
+        seen = {normalize_question(question)}
 
         for matched_q in similar_db_questions:
             normalized_matched = normalize_question(matched_q)
-            if normalized_matched not in seen_all:
+            if normalized_matched not in seen:
                 all_matched_questions.append(matched_q)
-                seen_all.add(normalized_matched)
+                seen.add(normalized_matched)
 
-    grouped_topics = group_questions_by_topic(all_matched_questions)
+        grouped_topics = group_questions_by_topic(all_matched_questions)
+        save_clustered_results(grouped_topics)
+        result = build_cluster_result(grouped_topics)
 
-    rows = []
-    cluster_number = 1
+        return jsonify({
+            "message": "Question processed successfully",
+            "clusters": result
+        })
 
-    for topic in TOPIC_ORDER:
-        if topic in grouped_topics:
-            for q in grouped_topics[topic]:
-                rows.append({
-                    "cluster": f"Cluster {cluster_number}",
-                    "topic": topic,
-                    "question": q
-                })
-            cluster_number += 1
-
-    df = pd.DataFrame(rows)
-
-    if not df.empty:
-        df.to_sql(
-            "clustered_questions",
-            engine,
-            if_exists="replace",
-            index=False
-        )
-
-    result = []
-    cluster_number = 1
-
-    for topic in TOPIC_ORDER:
-        if topic in grouped_topics:
-            result.append({
-                "cluster": f"Cluster {cluster_number}",
-                "topic": topic,
-                "questions": grouped_topics[topic]
-            })
-            cluster_number += 1
-
-    return jsonify({
-        "message": "Multiple files uploaded and clustered successfully",
-        "files_uploaded": len(files),
-        "questions_found": len(all_questions),
-        "stored_in_db": len(saved_questions),
-        "duplicates_found": len(duplicate_questions),
-        "clusters_created": len(result),
-        "results": result
-    })
+    except Exception as e:
+        print("Ask question error:", e)
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------
 # Get Cluster Results
@@ -769,7 +768,8 @@ def get_results():
 
         return jsonify(grouped)
 
-    except Exception:
+    except Exception as e:
+        print("Results error:", e)
         return jsonify([])
 
 # ---------------------------
@@ -795,18 +795,19 @@ def add_question():
     """)
 
     try:
-        with engine.connect() as conn:
+        with engine.begin() as conn:
             conn.execute(query, {
                 "question_text": question_text,
                 "normalized_question": normalized_q,
                 "category": category
             })
-            conn.commit()
 
         delete_duplicate_questions()
         delete_semantic_duplicate_questions()
+        rebuild_clustered_results_from_questions()
 
-    except Exception:
+    except Exception as e:
+        print("Add question error:", e)
         return jsonify({"message": "Duplicate question detected"})
 
     return jsonify({"message": "Question added successfully"})
@@ -817,7 +818,7 @@ def add_question():
 @app.route("/questions", methods=["GET"])
 def get_questions():
     try:
-        df = pd.read_sql("SELECT * FROM questions", engine)
+        df = pd.read_sql("SELECT * FROM questions ORDER BY id ASC", engine)
         return jsonify(df.to_dict(orient="records"))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -827,19 +828,50 @@ def get_questions():
 # ---------------------------
 @app.route("/delete-question/<int:id>", methods=["DELETE"])
 def delete_question(id):
-    query = text("""
-        DELETE FROM questions
-        WHERE id = :id
-    """)
+    try:
+        with engine.begin() as conn:
+            row = conn.execute(
+                text("SELECT id, question_text FROM questions WHERE id = :id"),
+                {"id": id}
+            ).fetchone()
 
-    with engine.connect() as conn:
-        result = conn.execute(query, {"id": id})
-        conn.commit()
+            if not row:
+                return jsonify({"error": "Question not found"}), 404
 
-    if result.rowcount == 0:
-        return jsonify({"error": "Question not found"}), 404
+            conn.execute(
+                text("DELETE FROM questions WHERE id = :id"),
+                {"id": id}
+            )
 
-    return jsonify({"message": "Question deleted"})
+        rebuild_clustered_results_from_questions()
+
+        return jsonify({
+            "message": "Question deleted successfully",
+            "deleted_id": id,
+            "deleted_question": row[1]
+        })
+
+    except Exception as e:
+        print("Delete question error:", e)
+        return jsonify({"error": str(e)}), 500
+
+# ---------------------------
+# Delete File
+# ---------------------------
+@app.route("/delete-file/<path:filename>", methods=["DELETE"])
+def delete_file(filename):
+    try:
+        clean_name = safe_filename(filename)
+        filepath = os.path.join(app.config["UPLOAD_FOLDER"], clean_name)
+
+        if not os.path.exists(filepath):
+            return jsonify({"error": "File not found"}), 404
+
+        os.remove(filepath)
+        return jsonify({"message": "File deleted successfully"}), 200
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # ---------------------------
 # Cleanup Duplicate Questions
@@ -849,6 +881,7 @@ def cleanup_duplicates():
     try:
         delete_duplicate_questions()
         semantic_deleted = delete_semantic_duplicate_questions()
+        rebuild_clustered_results_from_questions()
 
         return jsonify({
             "message": "Duplicate questions cleaned successfully from database",
