@@ -8,29 +8,49 @@ function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
 
-    const users = JSON.parse(localStorage.getItem("users")) || [];
+    if (loading) return;
 
-    const validUser = users.find(
-      (user) => user.email === email && user.password === password
-    );
+    setLoading(true);
 
-    if (!validUser) {
-      alert("Invalid Email or Password ❌");
-      return;
-    }
+    try {
+      const response = await fetch("http://127.0.0.1:5000/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email,
+          password,
+        }),
+      });
 
-    localStorage.setItem("currentUser", JSON.stringify(validUser));
+      const data = await response.json();
 
-    alert("Login Successful ✅");
+      if (!data.success) {
+        alert(data.message || "Invalid Email or Password ❌");
+        setLoading(false);
+        return;
+      }
 
-    if (validUser.email === "admin@gmail.com") {
-      navigate("/admin/upload");
-    } else {
-      navigate("/home");
+      localStorage.setItem("currentUser", JSON.stringify(data.user));
+
+      alert("Login Successful ✅");
+
+      if (data.user.role === "Admin") {
+        navigate("/admin/upload");
+      } else {
+        navigate("/home");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      alert("Server error. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -38,19 +58,23 @@ function Login() {
     <div className="auth-page">
       <div className="container">
         <div className="auth-card">
+          <div className="top-badge">✦</div>
           <h2>Login</h2>
+          <p className="subtitle">Welcome back! Please enter your details.</p>
 
           <form onSubmit={handleLogin}>
-            <input
-              type="email"
-              className="input"
-              placeholder="Email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
+            <div className="input-group">
+              <input
+                type="email"
+                className="input"
+                placeholder="Email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
 
-            <div className="password-wrapper">
+            <div className="input-group password-wrapper">
               <input
                 type={showPassword ? "text" : "password"}
                 className="input"
@@ -60,22 +84,18 @@ function Login() {
                 required
               />
 
-              <span
+              <button
+                type="button"
                 className="eye-icon"
                 onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
               >
-                <i
-                  className={
-                    showPassword
-                      ? "fa-solid fa-eye-slash"
-                      : "fa-solid fa-eye"
-                  }
-                ></i>
-              </span>
+                {showPassword ? "🙈" : "👁"}
+              </button>
             </div>
 
-            <button className="btn" type="submit">
-              Login
+            <button className="btn" type="submit" disabled={loading}>
+              {loading ? "Logging in..." : "Login"}
             </button>
           </form>
 

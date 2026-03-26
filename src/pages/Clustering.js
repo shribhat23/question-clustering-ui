@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import "../styles/Clustering.css";
 
@@ -20,15 +20,22 @@ function Clustering() {
     filesUploaded: 0,
   });
 
+  const API_BASE = process.env.REACT_APP_API_BASE || "http://127.0.0.1:5000";
+
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("currentUser"));
-    setUser(storedUser);
+    try {
+      const storedUser = JSON.parse(localStorage.getItem("currentUser"));
+      setUser(storedUser);
+    } catch (error) {
+      console.error("User parse error:", error);
+      setUser(null);
+    }
   }, []);
 
   useEffect(() => {
     if (location.state) {
       setMessage(location.state.message || "");
-      setClusters(location.state.clusters || []);
+      setClusters(Array.isArray(location.state.clusters) ? location.state.clusters : []);
       setStats(
         location.state.stats || {
           questionsFound: 0,
@@ -56,12 +63,39 @@ function Clustering() {
     });
   };
 
+  const normalizeClusters = (rawClusters) => {
+    if (!Array.isArray(rawClusters)) return [];
+
+    return rawClusters
+      .map((item, index) => ({
+        cluster: item?.cluster || `Cluster ${index + 1}`,
+        topic: item?.topic || "Untitled Topic",
+        questions: Array.isArray(item?.questions)
+          ? item.questions.filter((q) => typeof q === "string" && q.trim() !== "")
+          : [],
+      }))
+      .filter((item) => item.questions.length > 0)
+      .sort((a, b) => {
+        const lenA = a.questions?.length || 0;
+        const lenB = b.questions?.length || 0;
+
+        if (lenB !== lenA) return lenB - lenA;
+        return (a.topic || "").localeCompare(b.topic || "");
+      })
+      .map((item, index) => ({
+        ...item,
+        cluster: `Cluster ${index + 1}`,
+      }));
+  };
+
+  const sortedClusters = useMemo(() => normalizeClusters(clusters), [clusters]);
+
   const fetchResults = async () => {
     try {
-      const resultsRes = await fetch("http://127.0.0.1:5000/results");
+      const resultsRes = await fetch(`${API_BASE}/results`);
       const resultsData = await resultsRes.json();
 
-      if (Array.isArray(resultsData)) {
+      if (resultsRes.ok && Array.isArray(resultsData)) {
         setClusters(resultsData);
       } else {
         setClusters([]);
@@ -89,13 +123,20 @@ function Clustering() {
       setClusters([]);
       resetStats();
 
-      const uploadRes = await fetch("http://127.0.0.1:5000/upload-multiple", {
+      const uploadRes = await fetch(`${API_BASE}/upload`, {
         method: "POST",
         body: formData,
       });
 
       const uploadData = await uploadRes.json();
       console.log("Upload response:", uploadData);
+
+      if (!uploadRes.ok) {
+        setMessage(uploadData.error || "Error while uploading files");
+        setClusters([]);
+        resetStats();
+        return;
+      }
 
       setMessage(uploadData.message || "Files uploaded successfully");
 
@@ -107,9 +148,13 @@ function Clustering() {
         filesUploaded: uploadData.files_uploaded || files.length || 0,
       });
 
-      await fetchResults();
+      if (Array.isArray(uploadData.results)) {
+        setClusters(uploadData.results);
+      } else {
+        await fetchResults();
+      }
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Upload error:", error);
       setMessage("Error while uploading or fetching results");
       setClusters([]);
       resetStats();
@@ -130,7 +175,7 @@ function Clustering() {
       setClusters([]);
       resetStats();
 
-      const res = await fetch("http://127.0.0.1:5000/ask-question", {
+      const res = await fetch(`${API_BASE}/ask-question`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -159,7 +204,7 @@ function Clustering() {
 
       setQuestionInput("");
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Question error:", error);
       setMessage("Error while sending question");
       setClusters([]);
     } finally {
@@ -196,6 +241,32 @@ function Clustering() {
     }
   };
 
+  const handleFileChange = (e) => {
+    const selectedFiles = Array.from(e.target.files || []);
+
+    const allowedExtensions = [".txt", ".csv", ".json", ".md", ".log", ".pdf", ".docx"];
+
+    const validFiles = selectedFiles.filter((file) => {
+      const lowerName = file.name.toLowerCase();
+      return allowedExtensions.some((ext) => lowerName.endsWith(ext));
+    });
+
+    const rejectedFiles = selectedFiles.filter((file) => {
+      const lowerName = file.name.toLowerCase();
+      return !allowedExtensions.some((ext) => lowerName.endsWith(ext));
+    });
+
+    if (rejectedFiles.length > 0) {
+      alert(
+        `Unsupported files removed: ${rejectedFiles
+          .map((f) => f.name)
+          .join(", ")}.\nUse only TXT, CSV, JSON, MD, LOG, PDF, DOCX files.`
+      );
+    }
+
+    setFiles(validFiles);
+  };
+
   return (
     <div className="clustering-page">
       <div className="clustering-body">
@@ -205,10 +276,10 @@ function Clustering() {
           <Link to="/home">🏠 Home</Link>
           <Link to="/dashboard">📂 Dashboard</Link>
           <Link to="/clustering" className="active-link">
-            🧠 Clustering
+            🧠 Question Clustering
           </Link>
-          <Link to="#">📊 Analytics</Link>
-          <Link to="#">🗂 SQL Views</Link>
+          <Link to="/analytics">📊 Learning Analytics</Link>
+          <Link to="/model">⚙️ Model</Link>
           <Link to="/about">ℹ️ About</Link>
 
           <span onClick={handleLogout} style={{ cursor: "pointer" }}>
@@ -240,16 +311,20 @@ function Clustering() {
 
             <form onSubmit={handleMainSubmit}>
               <div className="chat-input-container">
-                <label htmlFor="clusterFileUpload" className="plus-icon" title="Choose files">
+                <label
+                  htmlFor="clusterFileUpload"
+                  className="plus-icon"
+                  title="Choose files"
+                >
                   <i className="fa-solid fa-plus"></i>
                 </label>
 
                 <input
                   type="file"
                   id="clusterFileUpload"
-                  accept=".csv,.pdf,.doc,.docx,.txt"
+                  accept=".txt,.csv,.json,.md,.log,.pdf,.docx"
                   multiple
-                  onChange={(e) => setFiles(Array.from(e.target.files))}
+                  onChange={handleFileChange}
                   hidden
                 />
 
@@ -297,7 +372,9 @@ function Clustering() {
             )}
           </div>
 
-          {(stats.questionsFound > 0 || stats.clustersCreated > 0 || stats.filesUploaded > 0) && (
+          {(stats.questionsFound > 0 ||
+            stats.clustersCreated > 0 ||
+            stats.filesUploaded > 0) && (
             <div className="stats">
               <div className="cluster-stat-card">
                 <h3>{stats.filesUploaded}</h3>
@@ -331,10 +408,10 @@ function Clustering() {
 
             {loading ? (
               <div className="empty-state">Processing, please wait...</div>
-            ) : clusters.length > 0 ? (
+            ) : sortedClusters.length > 0 ? (
               <div className="cluster-grid">
-                {clusters.map((item, index) => (
-                  <div key={index} className="cluster-card">
+                {sortedClusters.map((item, index) => (
+                  <div key={`${item.topic}-${index}`} className="cluster-card">
                     <div className="cluster-header">
                       <span className="cluster-badge">
                         {item.cluster || `Cluster ${index + 1}`}
@@ -350,7 +427,7 @@ function Clustering() {
                     <ul className="question-list">
                       {Array.isArray(item.questions) &&
                         item.questions.map((q, i) => (
-                          <li key={i} className="question-item">
+                          <li key={`${item.topic}-${i}`} className="question-item">
                             {q}
                           </li>
                         ))}

@@ -1,9 +1,14 @@
-/* PAGE */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
+/* ================= LAYOUT ================= */
 .about-page {
-  background: #eef4fb;
   min-height: 100vh;
-  font-family: "Segoe UI", sans-serif;
+  background: linear-gradient(135deg, #f3f7ff, #eef3ff);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
 }
 
 .about-body {
@@ -11,64 +16,170 @@
   min-height: 100vh;
 }
 
-/* SIDEBAR */
-
+/* ================= SIDEBAR ================= */
 .sidebar {
-  width: 240px;
-  background: linear-gradient(180deg, #0f172a, #1e3a8a);
+  width: 260px;
+  background: linear-gradient(180deg, #08142f, #132647);
   color: white;
-  padding-top: 24px;
+  padding: 28px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
 }
 
 .sidebar h2 {
-  text-align: center;
-  margin-bottom: 30px;
-  font-size: 26px;
+  font-size: 28px;
+  font-weight: 800;
+  margin-bottom: 18px;
+  padding: 6px 12px;
 }
 
 .sidebar a,
 .sidebar span {
-  display: block;
-  padding: 14px 22px;
-  color: #e2e8f0;
   text-decoration: none;
+  color: #dbe7ff;
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  transition: all 0.25s ease;
   cursor: pointer;
 }
 
 .sidebar a:hover,
-.sidebar span:hover,
-.sidebar .active-link {
-  background: rgba(255,255,255,0.12);
-  border-left: 4px solid #60a5fa;
-  padding-left: 26px;
+.sidebar span:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transform: translateX(4px);
 }
 
-/* MAIN */
+.active-link {
+  background: rgba(255, 255, 255, 0.15);
+  color: #ffffff !important;
+  border-left: 3px solid #60a5fa;
+  box-shadow: 0 0 20px rgba(37, 99, 235, 0.2);
+}
 
+/* ================= MAIN ================= */
 .about-main {
   flex: 1;
-  padding: 40px;
+  padding: 30px;
 }
 
-/* ABOUT CARD */
+/* ================= HERO ================= */
+.about-hero {
+  background: linear-gradient(135deg, #2563eb, #7c3aed);
+  color: white;
+  padding: 28px;
+  border-radius: 18px;
+  margin-bottom: 25px;
+  box-shadow: 0 10px 25px rgba(37, 99, 235, 0.25);
+}
 
+.about-hero h1 {
+  font-size: 30px;
+  margin-bottom: 10px;
+  font-weight: 800;
+}
+
+.about-hero p {
+  font-size: 15px;
+  line-height: 1.7;
+  opacity: 0.95;
+}
+
+/* ================= GRID ================= */
+.about-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+/* ================= CARD ================= */
 .about-card {
-  background: #f4f4f4;
-  padding: 40px;
-  border-radius: 30px;
-  border: 1px solid #dbeafe;
-  max-width: 1400px;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 20px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  transition: all 0.25s ease;
+}
+
+.about-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 30px rgba(59, 130, 246, 0.15);
 }
 
 .about-card h2 {
-  font-size: 38px;
-  color: #0b1f4d;
-  margin-bottom: 30px;
+  font-size: 18px;
+  color: #1e3a8a;
+  margin-bottom: 10px;
+  font-weight: 700;
 }
 
 .about-card p {
-  font-size: 20px;
-  color: #425b7b;
-  line-height: 1.9;
-  margin-bottom: 24px;
+  font-size: 14px;
+  color: #475569;
+  line-height: 1.7;
+}
+
+.about-card ul {
+  padding-left: 18px;
+}
+
+.about-card li {
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: #475569;
+}
+
+/* ================= HIGHLIGHT ================= */
+.highlight-card {
+  background: linear-gradient(135deg, #e0f2fe, #eef2ff);
+  border: 1px solid #c7d2fe;
+}
+
+.highlight-card h2 {
+  color: #1d4ed8;
+}
+
+.highlight-card p {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+/* ================= RESPONSIVE ================= */
+@media (max-width: 1024px) {
+  .about-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .about-body {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .about-main {
+    padding: 20px;
+  }
+
+  .about-hero h1 {
+    font-size: 24px;
+  }
+}
+
+@media (max-width: 520px) {
+  .about-card h2 {
+    font-size: 16px;
+  }
+
+  .about-card p,
+  .about-card li {
+    font-size: 13px;
+  }
 }

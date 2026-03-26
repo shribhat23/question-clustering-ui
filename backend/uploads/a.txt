@@ -8,3 +8,25 @@ Find the HCF of 24 and 36
 
 Explain Probability
 find the LCM of 2 and 5
+ Write a Python program to reverse a string
+Explain list comprehension in Python
+ Explain OOP in Python
+Explain file handling in Python
+1. Find the derivative of x^2 + 3x
+2. Evaluate the integral of sin(x)
+3. Solve the equation x^2 - 5x + 6 = 0
+4. Find LCM of 12 and 18
+8. Solve dy/dx = x + y
+9. Find area of circle with radius 7
+10. Explain matrices and determinants
+Explain file handling in Python
+Explain OOP in Python
+Explain matrices and determinants
+What is artificial intelligence?
+Explain heuristic search
+Explain supervised learning
+What is DBMS?
+Explain normalization
+Define stack
+Explain photosynthesis
+What is cloud computing?

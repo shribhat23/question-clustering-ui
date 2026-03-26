@@ -1,17 +1,30 @@
 import React, { useState, useEffect, useRef } from "react";
 import "../styles/AdminUploads.css";
 
+const API_BASE = "http://127.0.0.1:5000";
+
 function AdminUploads() {
   const [uploadMessage, setUploadMessage] = useState("");
   const [questionMessage, setQuestionMessage] = useState("");
   const [manageMessage, setManageMessage] = useState("");
+  const [modelMessage, setModelMessage] = useState("");
 
   const [files, setFiles] = useState([]);
   const [questions, setQuestions] = useState([]);
   const [questionText, setQuestionText] = useState("");
-  const [category, setCategory] = useState("Manual");
+  const [category, setCategory] = useState("Auto");
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [activeSection, setActiveSection] = useState("overview");
+
+  const [backendConnected, setBackendConnected] = useState(true);
+  const [backendStatusMessage, setBackendStatusMessage] = useState("");
+
+  const [modelStatus, setModelStatus] = useState({
+    classifier_trained: false,
+    topic_counts: [],
+    uses_sentence_transformer: true,
+    uses_logistic_regression: false
+  });
 
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
@@ -20,6 +33,7 @@ function AdminUploads() {
     setUploadMessage("");
     setQuestionMessage("");
     setManageMessage("");
+    setModelMessage("");
   };
 
   const changeSection = (section) => {
@@ -27,10 +41,81 @@ function AdminUploads() {
     setActiveSection(section);
   };
 
+  const buildErrorMessage = (error, fallback) => {
+    if (!error) return fallback;
+
+    const msg = String(error.message || error);
+
+    if (msg.includes("Failed to fetch")) {
+      return "Unable to connect to backend. Check Flask server, API URL, and CORS settings.";
+    }
+
+    if (msg.includes("Invalid response")) {
+      return "Backend returned an invalid response.";
+    }
+
+    return msg || fallback;
+  };
+
+  const safeJson = async (response) => {
+    try {
+      return await response.json();
+    } catch {
+      throw new Error("Invalid response from server");
+    }
+  };
+
+  const apiFetch = async (path, options = {}) => {
+    const response = await fetch(`${API_BASE}${path}`, options);
+
+    let data = null;
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      if (!response.ok) {
+        throw new Error(text || "Server request failed");
+      }
+      return { ok: true, data: text };
+    }
+
+    if (!response.ok) {
+      throw new Error(data?.error || data?.message || "Server request failed");
+    }
+
+    return { ok: true, data };
+  };
+
+  const checkBackend = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/`, { method: "GET" });
+      const text = await response.text();
+
+      if (response.ok) {
+        setBackendConnected(true);
+        setBackendStatusMessage("");
+      } else {
+        setBackendConnected(false);
+        setBackendStatusMessage("Backend is reachable but returned an unexpected response.");
+      }
+
+      return response.ok && text;
+    } catch (error) {
+      setBackendConnected(false);
+      setBackendStatusMessage(
+        "Backend is not reachable. Start Flask server and verify API URL."
+      );
+      return null;
+    }
+  };
+
   const fetchFiles = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:5000/files");
-      const data = await res.json();
+      const { data } = await apiFetch("/files");
+      setBackendConnected(true);
+      setBackendStatusMessage("");
 
       if (data.uploaded_files) {
         setFiles(data.uploaded_files);
@@ -40,13 +125,16 @@ function AdminUploads() {
     } catch (error) {
       console.error("Error fetching files:", error);
       setFiles([]);
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Could not load files."));
     }
   };
 
   const fetchQuestions = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:5000/questions");
-      const data = await res.json();
+      const { data } = await apiFetch("/questions");
+      setBackendConnected(true);
+      setBackendStatusMessage("");
 
       if (Array.isArray(data)) {
         setQuestions(data);
@@ -56,13 +144,53 @@ function AdminUploads() {
     } catch (error) {
       console.error("Error fetching questions:", error);
       setQuestions([]);
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Could not load questions."));
+    }
+  };
+
+  const fetchModelStatus = async () => {
+    try {
+      const { data } = await apiFetch("/model-status");
+      setBackendConnected(true);
+      setBackendStatusMessage("");
+
+      setModelStatus({
+        classifier_trained: !!data.classifier_trained,
+        topic_counts: Array.isArray(data.topic_counts) ? data.topic_counts : [],
+        uses_sentence_transformer: !!data.uses_sentence_transformer,
+        uses_logistic_regression: !!data.uses_logistic_regression
+      });
+    } catch (error) {
+      console.error("Error fetching model status:", error);
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Could not load model status."));
+      setModelStatus({
+        classifier_trained: false,
+        topic_counts: [],
+        uses_sentence_transformer: true,
+        uses_logistic_regression: false
+      });
     }
   };
 
   useEffect(() => {
-    fetchFiles();
-    fetchQuestions();
+    const init = async () => {
+      await checkBackend();
+      await fetchFiles();
+      await fetchQuestions();
+      await fetchModelStatus();
+    };
+
+    init();
   }, []);
+
+  const refreshAll = async () => {
+    await checkBackend();
+    await fetchFiles();
+    await fetchQuestions();
+    await fetchModelStatus();
+  };
 
   const mergeSelectedFiles = (incomingFiles) => {
     const existingMap = new Map();
@@ -107,9 +235,11 @@ function AdminUploads() {
 
   const handleUpload = async (e) => {
     e.preventDefault();
+
     setUploadMessage("");
     setQuestionMessage("");
     setManageMessage("");
+    setModelMessage("");
 
     if (selectedFiles.length === 0) {
       setUploadMessage("Please choose file(s) or folder");
@@ -117,31 +247,45 @@ function AdminUploads() {
     }
 
     const formData = new FormData();
-
     selectedFiles.forEach((file) => {
       formData.append("files", file);
     });
 
     try {
-      const response = await fetch("http://127.0.0.1:5000/upload", {
+      const { data } = await apiFetch("/upload", {
         method: "POST",
         body: formData
       });
 
-      const data = await response.json();
+      setBackendConnected(true);
+      setBackendStatusMessage("");
 
-      if (!response.ok) {
-        setUploadMessage(data.error || "Error while uploading files");
-        return;
+      let finalMessage = data.message || "Files uploaded successfully";
+
+      if (typeof data.questions_found === "number") {
+        finalMessage += ` | Questions Found: ${data.questions_found}`;
       }
 
-      setUploadMessage(data.message || "Files uploaded successfully");
+      if (typeof data.stored_in_db === "number") {
+        finalMessage += ` | Stored: ${data.stored_in_db}`;
+      }
+
+      if (typeof data.duplicates_found === "number") {
+        finalMessage += ` | Duplicates: ${data.duplicates_found}`;
+      }
+
+      if (typeof data.clusters_created === "number") {
+        finalMessage += ` | Clusters: ${data.clusters_created}`;
+      }
+
+      setUploadMessage(finalMessage);
       clearSelectedFiles();
-      fetchFiles();
-      fetchQuestions();
+      await refreshAll();
     } catch (error) {
       console.error("Upload error:", error);
-      setUploadMessage("Error while uploading files");
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Upload failed."));
+      setUploadMessage(buildErrorMessage(error, "Error while uploading files"));
     }
   };
 
@@ -150,6 +294,7 @@ function AdminUploads() {
     setUploadMessage("");
     setQuestionMessage("");
     setManageMessage("");
+    setModelMessage("");
 
     if (!questionText.trim()) {
       setQuestionMessage("Question is required");
@@ -157,31 +302,43 @@ function AdminUploads() {
     }
 
     try {
-      const response = await fetch("http://127.0.0.1:5000/add-question", {
+      const { data } = await apiFetch("/add-question", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          question_text: questionText,
+          question_text: questionText.trim(),
           category: category
         })
       });
 
-      const data = await response.json();
+      setBackendConnected(true);
+      setBackendStatusMessage("");
 
-      if (!response.ok) {
-        setQuestionMessage(data.error || "Error while adding question");
-        return;
+      let finalMessage = data.message || "Question added successfully";
+
+      if (data.assigned_category) {
+        finalMessage += ` | Assigned Category: ${data.assigned_category}`;
       }
 
-      setQuestionMessage(data.message || "Question added successfully");
+      if (data.deleted_old_duplicates_count > 0) {
+        finalMessage += ` | ${data.deleted_old_duplicates_count} old similar question(s) removed`;
+      }
+
+      if (Array.isArray(data.deleted_old_questions) && data.deleted_old_questions.length > 0) {
+        finalMessage += ` | Removed: ${data.deleted_old_questions.join(" | ")}`;
+      }
+
+      setQuestionMessage(finalMessage);
       setQuestionText("");
-      setCategory("Manual");
-      fetchQuestions();
+      setCategory("Auto");
+      await refreshAll();
     } catch (error) {
       console.error("Add question error:", error);
-      setQuestionMessage("Error while adding question");
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Add question failed."));
+      setQuestionMessage(buildErrorMessage(error, "Error while adding question"));
     }
   };
 
@@ -192,24 +349,22 @@ function AdminUploads() {
     setManageMessage("");
     setUploadMessage("");
     setQuestionMessage("");
+    setModelMessage("");
 
     try {
-      const response = await fetch(`http://127.0.0.1:5000/delete-question/${id}`, {
+      const { data } = await apiFetch(`/delete-question/${id}`, {
         method: "DELETE"
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setManageMessage(data.error || "Error while deleting question");
-        return;
-      }
-
+      setBackendConnected(true);
+      setBackendStatusMessage("");
       setManageMessage(data.message || "Question deleted");
-      fetchQuestions();
+      await refreshAll();
     } catch (error) {
-      console.error("Delete error:", error);
-      setManageMessage("Error while deleting question");
+      console.error("Delete question error:", error);
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Delete question failed."));
+      setManageMessage(buildErrorMessage(error, "Error while deleting question"));
     }
   };
 
@@ -220,27 +375,88 @@ function AdminUploads() {
     setManageMessage("");
     setUploadMessage("");
     setQuestionMessage("");
+    setModelMessage("");
 
     try {
-      const response = await fetch(
-        `http://127.0.0.1:5000/delete-file/${encodeURIComponent(filename)}`,
-        {
-          method: "DELETE"
-        }
-      );
+      const { data } = await apiFetch(`/delete-file/${encodeURIComponent(filename)}`, {
+        method: "DELETE"
+      });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        setManageMessage(data.message || "Error while deleting file");
-        return;
-      }
-
+      setBackendConnected(true);
+      setBackendStatusMessage("");
       setManageMessage(data.message || "File deleted successfully");
-      fetchFiles();
+      await refreshAll();
     } catch (error) {
       console.error("Delete file error:", error);
-      setManageMessage("Error while deleting file");
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Delete file failed."));
+      setManageMessage(buildErrorMessage(error, "Error while deleting file"));
+    }
+  };
+
+  const handleAutoLabelDb = async () => {
+    setModelMessage("");
+    setUploadMessage("");
+    setQuestionMessage("");
+    setManageMessage("");
+
+    try {
+      const { data } = await apiFetch("/auto-label-db", {
+        method: "POST"
+      });
+
+      setBackendConnected(true);
+      setBackendStatusMessage("");
+
+      let msg = data.message || "Database auto-labeled successfully";
+
+      if (typeof data.updated_count === "number") {
+        msg += ` | Updated: ${data.updated_count}`;
+      }
+
+      if (typeof data.classifier_trained === "boolean") {
+        msg += data.classifier_trained
+          ? " | Classifier Trained"
+          : " | Classifier Not Trained Yet";
+      }
+
+      setModelMessage(msg);
+      await refreshAll();
+    } catch (error) {
+      console.error("Auto-label DB error:", error);
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Auto label failed."));
+      setModelMessage(buildErrorMessage(error, "Error while auto-labeling database"));
+    }
+  };
+
+  const handleCleanupDuplicates = async () => {
+    setModelMessage("");
+    setUploadMessage("");
+    setQuestionMessage("");
+    setManageMessage("");
+
+    try {
+      const { data } = await apiFetch("/cleanup-duplicates", {
+        method: "DELETE"
+      });
+
+      setBackendConnected(true);
+      setBackendStatusMessage("");
+
+      let msg = data.message || "Duplicate cleanup completed";
+
+      if (typeof data.semantic_deleted_count === "number") {
+        msg += ` | Semantic Deleted: ${data.semantic_deleted_count}`;
+      }
+
+      setManageMessage(msg);
+      await refreshAll();
+    } catch (error) {
+      console.error("Cleanup duplicates error:", error);
+      setBackendConnected(false);
+      setBackendStatusMessage(buildErrorMessage(error, "Cleanup failed."));
+      setManageMessage(buildErrorMessage(error, "Error while cleaning duplicates"));
     }
   };
 
@@ -306,8 +522,16 @@ function AdminUploads() {
             <h1>Welcome, Admin</h1>
             <p>Manage files, questions, and system records from one place</p>
           </div>
-          <div className="topbar-badge">Live Dashboard</div>
+          <div className="topbar-badge">
+            {modelStatus.classifier_trained ? "Model Trained" : "Model Training Pending"}
+          </div>
         </div>
+
+        {!backendConnected && backendStatusMessage && (
+          <div className="admin-message">
+            {backendStatusMessage}
+          </div>
+        )}
 
         {activeSection === "uploadQuestion" && uploadMessage && (
           <div className="admin-message">{uploadMessage}</div>
@@ -317,44 +541,131 @@ function AdminUploads() {
           <div className="admin-message">{questionMessage}</div>
         )}
 
-        {(activeSection === "files" || activeSection === "manage") && manageMessage && (
-          <div className="admin-message">{manageMessage}</div>
+        {(activeSection === "files" || activeSection === "manage" || activeSection === "overview") &&
+          manageMessage && <div className="admin-message">{manageMessage}</div>}
+
+        {(activeSection === "overview" || activeSection === "manage") && modelMessage && (
+          <div className="admin-message">{modelMessage}</div>
         )}
 
         {activeSection === "overview" && (
-          <section className="stats-grid">
-            <div className="stat-card blue">
-              <div className="stat-icon">📁</div>
-              <div>
-                <h3>{files.length}</h3>
-                <p>Total Uploaded Files</p>
+          <>
+            <section className="stats-grid">
+              <div className="stat-card blue">
+                <div className="stat-icon">📁</div>
+                <div>
+                  <h3>{files.length}</h3>
+                  <p>Total Uploaded Files</p>
+                </div>
               </div>
-            </div>
 
-            <div className="stat-card purple">
-              <div className="stat-icon">❓</div>
-              <div>
-                <h3>{questions.length}</h3>
-                <p>Total Questions</p>
+              <div className="stat-card purple">
+                <div className="stat-icon">❓</div>
+                <div>
+                  <h3>{questions.length}</h3>
+                  <p>Total Questions</p>
+                </div>
               </div>
-            </div>
 
-            <div className="stat-card green">
-              <div className="stat-icon">➕</div>
-              <div>
-                <h3>{questions.filter((q) => q.category === "Manual").length}</h3>
-                <p>Manual Questions</p>
+              <div className="stat-card green">
+                <div className="stat-icon">🏷️</div>
+                <div>
+                  <h3>{questions.filter((q) => q.category && q.category !== "Auto").length}</h3>
+                  <p>Labeled Questions</p>
+                </div>
               </div>
-            </div>
 
-            <div className="stat-card orange">
-              <div className="stat-icon">📚</div>
-              <div>
-                <h3>{[...new Set(questions.map((q) => q.category))].length}</h3>
-                <p>Total Categories</p>
+              <div className="stat-card orange">
+                <div className="stat-icon">📚</div>
+                <div>
+                  <h3>{[...new Set(questions.map((q) => q.category).filter(Boolean))].length}</h3>
+                  <p>Total Categories</p>
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+
+            <section className="stacked-section">
+              <div className="dashboard-card">
+                <div className="card-header">
+                  <h2>Model Status</h2>
+                  <span className="card-tag">
+                    {modelStatus.classifier_trained ? "Trained" : "Pending"}
+                  </span>
+                </div>
+
+                <div className="model-status-box">
+                  <p>
+                    <strong>Sentence Transformer:</strong>{" "}
+                    {modelStatus.uses_sentence_transformer ? "Enabled" : "Disabled"}
+                  </p>
+                  <p>
+                    <strong>Logistic Regression:</strong>{" "}
+                    {modelStatus.uses_logistic_regression ? "Enabled" : "Disabled"}
+                  </p>
+                  <p>
+                    <strong>Classifier Trained:</strong>{" "}
+                    {modelStatus.classifier_trained ? "Yes" : "No"}
+                  </p>
+
+                  <div className="upload-action-row" style={{ marginTop: "14px" }}>
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={handleAutoLabelDb}
+                    >
+                      Auto Label DB
+                    </button>
+
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={fetchModelStatus}
+                    >
+                      Refresh Model Status
+                    </button>
+
+                    <button
+                      type="button"
+                      className="primary-btn"
+                      onClick={handleCleanupDuplicates}
+                    >
+                      Cleanup Duplicates
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="dashboard-card">
+                <div className="card-header">
+                  <h2>Topic Distribution</h2>
+                  <span className="card-tag neutral">Live DB</span>
+                </div>
+
+                {modelStatus.topic_counts && modelStatus.topic_counts.length > 0 ? (
+                  <div className="table-wrapper">
+                    <table className="question-table">
+                      <thead>
+                        <tr>
+                          <th>Category</th>
+                          <th>Count</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {modelStatus.topic_counts.map((item, index) => (
+                          <tr key={index}>
+                            <td>{item.category}</td>
+                            <td>{item.count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="empty-text">No topic distribution data found</p>
+                )}
+              </div>
+            </section>
+          </>
         )}
 
         {activeSection === "uploadQuestion" && (
@@ -421,7 +732,9 @@ function AdminUploads() {
                       <div className="selected-files-list">
                         {selectedFiles.map((file, index) => (
                           <div key={`${file.name}-${index}`} className="selected-file-item">
-                            <span className="selected-file-name">{file.webkitRelativePath || file.name}</span>
+                            <span className="selected-file-name">
+                              {file.webkitRelativePath || file.name}
+                            </span>
                             <button
                               type="button"
                               className="remove-selected-btn"
@@ -479,7 +792,7 @@ function AdminUploads() {
                   onChange={(e) => setCategory(e.target.value)}
                   className="select-input"
                 >
-                  <option value="Manual">Manual</option>
+                  <option value="Auto">Auto Detect</option>
                   <option value="Mathematics">Mathematics</option>
                   <option value="Physics">Physics</option>
                   <option value="Chemistry">Chemistry</option>
@@ -553,6 +866,32 @@ function AdminUploads() {
             <div className="card-header">
               <h2>All Questions</h2>
               <span className="card-tag danger">Manage Records</span>
+            </div>
+
+            <div className="upload-action-row" style={{ marginBottom: "16px" }}>
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleAutoLabelDb}
+              >
+                Auto Label DB
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={handleCleanupDuplicates}
+              >
+                Cleanup Duplicates
+              </button>
+
+              <button
+                type="button"
+                className="primary-btn"
+                onClick={refreshAll}
+              >
+                Refresh Data
+              </button>
             </div>
 
             {questions.length > 0 ? (

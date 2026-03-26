@@ -7,8 +7,11 @@ import Home from "./pages/Home";
 import Dashboard from "./pages/Dashboard";
 import Clustering from "./pages/Clustering";
 import About from "./pages/About";
+import Analytics from "./pages/Analytics";
+
 
 import AdminUpload from "./Admin_Frontend/AdminUploads";
+import Model from "./pages/Model";
 
 function App() {
   return (
@@ -20,6 +23,8 @@ function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/clustering" element={<Clustering />} />
+        <Route path="/analytics" element={<Analytics />} /> 
+        <Route path="/model" element={<Model />} />
         <Route path="/about" element={<About />} /> 
 
         {/* Admin Upload Page */}

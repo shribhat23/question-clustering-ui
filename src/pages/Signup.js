@@ -12,42 +12,52 @@ function Signup() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const handleSignup = (e) => {
+  const handleSignup = async (e) => {
     e.preventDefault();
+
+    if (loading) return;
 
     if (password !== confirmPassword) {
       alert("Passwords do not match ❌");
       return;
     }
 
-    const existingUsers = JSON.parse(localStorage.getItem("users")) || [];
+    setLoading(true);
 
-    const userExists = existingUsers.find((user) => user.email === email);
+    try {
+      const response = await fetch("http://127.0.0.1:5000/api/signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          role,
+          firstName,
+          lastName,
+          email,
+          password,
+          confirmPassword
+        })
+      });
 
-    if (userExists) {
-      alert("Email already registered ❌");
-      return;
+      const data = await response.json();
+
+      if (!data.success) {
+        alert(data.message || "Signup failed ❌");
+        setLoading(false);
+        return;
+      }
+
+      alert("Signup Successful ✅");
+      navigate("/");
+    } catch (error) {
+      console.error("Signup error:", error);
+      alert("Server error. Please try again.");
+    } finally {
+      setLoading(false);
     }
-
-    const finalRole = email === "admin@gmail.com" ? "Admin" : role;
-
-    const newUser = {
-      id: Date.now(),
-      firstName,
-      lastName,
-      name: firstName + " " + lastName,
-      email,
-      password,
-      role: finalRole,
-      profilePic: "https://i.pravatar.cc/40"
-    };
-
-    const updatedUsers = [...existingUsers, newUser];
-    localStorage.setItem("users", JSON.stringify(updatedUsers));
-
-    alert("Signup Successful ✅");
-    navigate("/");
   };
 
   return (
@@ -122,8 +132,8 @@ function Signup() {
               required
             />
 
-            <button className="btn" type="submit">
-              Signup
+            <button className="btn" type="submit" disabled={loading}>
+              {loading ? "Signing up..." : "Signup"}
             </button>
           </form>
 

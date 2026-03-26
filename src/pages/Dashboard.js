@@ -1,150 +1,120 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "../styles/Dashboard.css";
+
+const API_BASE = "http://127.0.0.1:5000";
 
 function Dashboard() {
   const navigate = useNavigate();
 
-  const [selectedFiles, setSelectedFiles] = useState([]);
-  const [questionText, setQuestionText] = useState("");
-  const [loading, setLoading] = useState(false);
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const [stats, setStats] = useState({
+    total_uploaded_files: 0,
+    total_questions: 0,
+    labeled_questions: 0,
+    total_categories: 0,
+    classifier_trained: false,
+  });
+
+  const [modelStatus, setModelStatus] = useState({
+    classifier_trained: false,
+    topic_counts: [],
+    uses_sentence_transformer: true,
+    uses_logistic_regression: false,
+  });
 
   useEffect(() => {
     const storedUser = JSON.parse(localStorage.getItem("currentUser"));
     setUser(storedUser);
+    loadDashboardData();
   }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      setLoading(true);
+
+      const [statsRes, modelRes] = await Promise.all([
+        fetch(`${API_BASE}/dashboard-stats`),
+        fetch(`${API_BASE}/model-status`),
+      ]);
+
+      const statsData = await statsRes.json();
+      const modelData = await modelRes.json();
+
+      if (statsRes.ok) {
+        setStats({
+          total_uploaded_files: statsData.total_uploaded_files || 0,
+          total_questions: statsData.total_questions || 0,
+          labeled_questions: statsData.labeled_questions || 0,
+          total_categories: statsData.total_categories || 0,
+          classifier_trained: !!statsData.classifier_trained,
+        });
+      }
+
+      if (modelRes.ok) {
+        setModelStatus({
+          classifier_trained: !!modelData.classifier_trained,
+          topic_counts: Array.isArray(modelData.topic_counts)
+            ? modelData.topic_counts
+            : [],
+          uses_sentence_transformer: !!modelData.uses_sentence_transformer,
+          uses_logistic_regression: !!modelData.uses_logistic_regression,
+        });
+      }
+    } catch (error) {
+      console.error("Dashboard load error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("currentUser");
     navigate("/");
   };
 
-  const handleFileChange = (event) => {
-    const files = Array.from(event.target.files);
-    setSelectedFiles(files);
-  };
+  const dashboardInsights = useMemo(() => {
+    const totalQuestions = stats.total_questions || 0;
+    const labeledQuestions = stats.labeled_questions || 0;
+    const unlabeledQuestions = Math.max(totalQuestions - labeledQuestions, 0);
 
-  const clearAll = () => {
-    setSelectedFiles([]);
-    setQuestionText("");
+    const labelCoverage =
+      totalQuestions > 0
+        ? Math.round((labeledQuestions / totalQuestions) * 100)
+        : 0;
 
-    const fileInput = document.getElementById("fileUpload");
-    if (fileInput) {
-      fileInput.value = "";
-    }
-  };
-
-  const handleQuestionSubmit = async () => {
-    if (!questionText.trim()) {
-      alert("Please type a question first!");
-      return;
-    }
-
-    const textRes = await fetch("http://127.0.0.1:5000/ask-question", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ question: questionText.trim() }),
-    });
-
-    const textData = await textRes.json();
-
-    if (!textRes.ok) {
-      throw new Error(textData.error || "Error while sending question");
-    }
-
-    return textData;
-  };
-
-  const handleFileUpload = async () => {
-    if (selectedFiles.length === 0) {
-      alert("Please select one or more files first!");
-      return;
-    }
-
-    const formData = new FormData();
-    selectedFiles.forEach((file) => {
-      formData.append("files", file);
-    });
-
-    const uploadRes = await fetch("http://127.0.0.1:5000/upload-multiple", {
-      method: "POST",
-      body: formData,
-    });
-
-    const uploadData = await uploadRes.json();
-
-    if (!uploadRes.ok) {
-      throw new Error(uploadData.error || "Error while uploading");
-    }
-
-    const previousFiles =
-      JSON.parse(localStorage.getItem("uploadedFilesHistory")) || [];
-    const newFileNames = selectedFiles.map((file) => file.name);
-
-    localStorage.setItem(
-      "uploadedFilesHistory",
-      JSON.stringify([...previousFiles, ...newFileNames])
+    const sortedTopics = [...modelStatus.topic_counts].sort(
+      (a, b) => (b.count || 0) - (a.count || 0)
     );
 
-    return uploadData;
-  };
+    const topTopic = sortedTopics[0] || null;
 
-  const handleSubmit = async () => {
-    if (selectedFiles.length === 0 && questionText.trim() === "") {
-      alert("Please select a file or type a question first!");
-      return;
+    let learningStage = "Starter";
+    if (labelCoverage >= 85 && totalQuestions >= 100) {
+      learningStage = "Advanced";
+    } else if (labelCoverage >= 60 && totalQuestions >= 50) {
+      learningStage = "Improving";
+    } else if (totalQuestions > 0) {
+      learningStage = "Developing";
     }
 
-    try {
-      setLoading(true);
-
-      let responseData = {};
-
-      if (questionText.trim()) {
-        responseData = await handleQuestionSubmit();
-      } else if (selectedFiles.length > 0) {
-        responseData = await handleFileUpload();
-      }
-
-      let clusters = [];
-
-      if (Array.isArray(responseData)) {
-        clusters = responseData;
-      } else if (responseData.clusters && Array.isArray(responseData.clusters)) {
-        clusters = responseData.clusters;
-      } else if (responseData.results && Array.isArray(responseData.results)) {
-        clusters = responseData.results;
-      } else {
-        const resultsRes = await fetch("http://127.0.0.1:5000/results");
-        const resultsData = await resultsRes.json();
-        clusters = Array.isArray(resultsData) ? resultsData : [];
-      }
-
-      navigate("/clustering", {
-        state: {
-          message: responseData.message || "Processed successfully",
-          stats: {
-            questionsFound: responseData.questions_found || 0,
-            storedInDb: responseData.stored_in_db || 0,
-            duplicatesFound: responseData.duplicates_found || 0,
-            clustersCreated:
-              responseData.clusters_created ||
-              (Array.isArray(clusters) ? clusters.length : 0),
-            filesUploaded: responseData.files_uploaded || 0,
-          },
-          clusters,
-        },
-      });
-    } catch (error) {
-      console.error("Error:", error);
-      alert(error.message || "Error while uploading");
-    } finally {
-      setLoading(false);
+    let revisionPriority = "Low";
+    if (unlabeledQuestions > 40 || labelCoverage < 50) {
+      revisionPriority = "High";
+    } else if (unlabeledQuestions > 15 || labelCoverage < 75) {
+      revisionPriority = "Medium";
     }
-  };
+
+    return {
+      unlabeledQuestions,
+      labelCoverage,
+      topTopic,
+      learningStage,
+      revisionPriority,
+    };
+  }, [stats, modelStatus]);
 
   return (
     <div className="dashboard-page">
@@ -156,9 +126,9 @@ function Dashboard() {
           <Link to="/dashboard" className="active-link">
             📂 Dashboard
           </Link>
-          <Link to="/clustering">🧠 Clustering</Link>
-          <Link to="#">📊 Analytics</Link>
-          <Link to="#">🗂 SQL Views</Link>
+          <Link to="/clustering">🧠 Question Clustering</Link>
+          <Link to="/analytics">📊 Learning Analytics</Link>
+          <Link to="/model">⚙️ Model</Link>
           <Link to="/about">ℹ️ About</Link>
 
           <span onClick={handleLogout} style={{ cursor: "pointer" }}>
@@ -169,132 +139,185 @@ function Dashboard() {
         <div className="main">
           <div className="topbar">
             <div>
-              <h1 className="page-title">Dashboard</h1>
+              <h1 className="page-title">Question Clustering Dashboard</h1>
               <p className="page-subtitle">
-                Upload question files or type a question to view clustering
-                results.
+                Analyze subject clusters, discover learning patterns, and monitor student question behavior
               </p>
             </div>
 
             <div className="user-info">
-              {user ? `${user.name} | ${user.role}` : "User"}
+              {user ? `${user.name || "User"} | ${user.role || "Student"}` : "User"}
             </div>
           </div>
 
-          <div className="upload-panel">
-            <h3>Upload Question Files</h3>
-            <p>
-              Select one or more files, or type a question below, then click
-              Send.
-            </p>
+          <div className="hero-banner">
+            <div className="hero-banner-left">
+              <span className="hero-badge">Learning Pattern Overview</span>
+              <h2>Understand how questions are grouped and how users learn</h2>
+              <p>
+                This dashboard helps you monitor clustered questions, identify
+                important subjects, detect weaker learning areas, and understand
+                how well the system is organizing academic patterns.
+              </p>
 
-            <div className="chat-input-container">
-              <label htmlFor="fileUpload" className="plus-icon">
-                <i className="fa-solid fa-plus"></i>
-              </label>
+              <div className="hero-buttons">
+                <button
+                  className="primary-btn"
+                  onClick={loadDashboardData}
+                  disabled={loading}
+                  type="button"
+                >
+                  {loading ? "Refreshing..." : "Refresh Insights"}
+                </button>
 
-              <input
-                type="file"
-                id="fileUpload"
-                accept=".csv,.pdf,.doc,.docx,.txt"
-                multiple
-                onChange={handleFileChange}
-                hidden
-              />
-
-              <input
-                type="text"
-                className="chat-input"
-                placeholder="Choose files or type your question here..."
-                value={questionText}
-                onChange={(e) => setQuestionText(e.target.value)}
-              />
-
-              <button
-                className="send-btn"
-                onClick={handleSubmit}
-                disabled={loading}
-                type="button"
-              >
-                {loading ? "..." : "Send"}
-              </button>
-            </div>
-
-            {selectedFiles.length > 0 && (
-              <div className="file-preview">
-                <div className="file-preview-title">Selected Files</div>
-                <ul className="file-preview-list">
-                  {selectedFiles.map((file, index) => (
-                    <li key={index}>{file.name}</li>
-                  ))}
-                </ul>
+                <button
+                  className="secondary-btn"
+                  onClick={() => navigate("/clustering")}
+                  type="button"
+                >
+                  View Clusters
+                </button>
               </div>
-            )}
+            </div>
 
-            {(selectedFiles.length > 0 || questionText.trim()) && (
-              <button className="clear-btn" onClick={clearAll} type="button">
-                Clear
-              </button>
-            )}
+            <div className="hero-banner-right">
+              <div className="hero-circle">🧠</div>
+              <div className="hero-mini-card">
+                <h4>Main Learning Area</h4>
+                <p>
+                  {dashboardInsights.topTopic
+                    ? dashboardInsights.topTopic.category
+                    : "No data"}
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="stats">
-            <div className="dashboard-card">
-              <h3>2000+</h3>
+          <div className="stats-grid">
+            <div className="stat-card">
+              <h3>{loading ? "..." : stats.total_questions}</h3>
               <p>Total Questions</p>
             </div>
 
-            <div className="dashboard-card">
-              <h3>8</h3>
-              <p>Total Subjects</p>
+            <div className="stat-card">
+              <h3>{loading ? "..." : stats.total_uploaded_files}</h3>
+              <p>Uploaded Files</p>
             </div>
 
-            <div className="dashboard-card">
-              <h3>5</h3>
-              <p>Total Clusters</p>
+            <div className="stat-card">
+              <h3>{loading ? "..." : `${dashboardInsights.labelCoverage}%`}</h3>
+              <p>Pattern Coverage</p>
             </div>
 
-            <div className="dashboard-card">
-              <h3>400</h3>
-              <p>Avg Questions per Cluster</p>
-            </div>
-
-            <div className="dashboard-card">
-              <h3>0.82</h3>
-              <p>Silhouette Score</p>
+            <div className="stat-card">
+              <h3>{loading ? "..." : dashboardInsights.learningStage}</h3>
+              <p>Learning Stage</p>
             </div>
           </div>
 
           <div className="section">
-            <h2>Key Metrics</h2>
-
-            <div className="metrics">
-              <div className="metric-box">
-                <h4>Questions Processed</h4>
-                <p>2000 records cleaned and vectorized using NLP techniques.</p>
-              </div>
-
-              <div className="metric-box">
-                <h4>Vocabulary Size</h4>
-                <p>Approx 15,000 unique tokens extracted from uploaded questions.</p>
-              </div>
-
-              <div className="metric-box">
-                <h4>Clustering Algorithm</h4>
+            <h2>Student Learning Insights</h2>
+            <div className="feature-grid">
+              <div className="feature-card">
+                <h3>📚 Subject Focus</h3>
                 <p>
-                  K-Means with Sentence Transformer embeddings for grouping
-                  similar questions.
+                  Detect which subject or topic receives the highest number of
+                  questions, showing where student attention is strongest.
                 </p>
               </div>
 
-              <div className="metric-box">
-                <h4>Database</h4>
+              <div className="feature-card">
+                <h3>🧠 Learning Pattern Detection</h3>
                 <p>
-                  MySQL stores questions, duplicates, and cluster information
-                  efficiently.
+                  Group similar questions together to understand recurring learning
+                  behavior and concept repetition.
+                </p>
+              </div>
+
+              <div className="feature-card">
+                <h3>🎯 Revision Guidance</h3>
+                <p>
+                  Use weak and low-frequency clusters to identify where revision,
+                  explanation, or more examples are needed.
                 </p>
               </div>
             </div>
+          </div>
+
+          <div className="section">
+            <h2>Learning Workflow</h2>
+            <div className="workflow-grid">
+              <div className="workflow-card">
+                <span>1</span>
+                <h4>Upload Questions</h4>
+                <p>Add academic questions from files and build the question dataset.</p>
+              </div>
+
+              <div className="workflow-card">
+                <span>2</span>
+                <h4>Cluster Similar Questions</h4>
+                <p>Group repeated and concept-related questions into meaningful clusters.</p>
+              </div>
+
+              <div className="workflow-card">
+                <span>3</span>
+                <h4>Detect Learning Pattern</h4>
+                <p>Observe which topics dominate and which areas show lower engagement.</p>
+              </div>
+
+              <div className="workflow-card">
+                <span>4</span>
+                <h4>Improve Study Direction</h4>
+                <p>Use the insights to guide revision, teaching focus, and better preparation.</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="section">
+            <h2>Model & Pattern Engine</h2>
+            <div className="model-grid">
+              <div className="model-card">
+                <h4>Classifier Status</h4>
+                <p>{modelStatus.classifier_trained ? "Ready" : "Not Ready"}</p>
+              </div>
+
+              <div className="model-card">
+                <h4>Sentence Transformer</h4>
+                <p>{modelStatus.uses_sentence_transformer ? "Enabled" : "Disabled"}</p>
+              </div>
+
+              <div className="model-card">
+                <h4>Logistic Regression</h4>
+                <p>{modelStatus.uses_logistic_regression ? "Enabled" : "Disabled"}</p>
+              </div>
+
+              <div className="model-card">
+                <h4>Total Categories</h4>
+                <p>{loading ? "..." : stats.total_categories}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="section">
+            <h2>Smart Summary</h2>
+            <div className="summary-box">
+              <p>
+                {stats.total_questions === 0
+                  ? "No question data is available yet. Upload files and begin clustering to generate learning insights."
+                  : `Your system currently contains ${stats.total_questions} questions across ${stats.total_categories} categories. The most active topic is ${
+                      dashboardInsights.topTopic
+                        ? dashboardInsights.topTopic.category
+                        : "not available yet"
+                    }. Pattern coverage is ${dashboardInsights.labelCoverage}%, and the current revision priority is ${dashboardInsights.revisionPriority}.`}
+              </p>
+            </div>
+          </div>
+
+          <div className="footer-note">
+            <p>
+              SmartCluster is now presented as a learning intelligence dashboard —
+              focused on question grouping, subject behavior, and student learning patterns.
+            </p>
           </div>
         </div>
       </div>
